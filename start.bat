@@ -1,89 +1,82 @@
 @echo off
 
-REM ��װ������
+REM Install dependencies
 call npm install
 
-REM ���ô�������վ��you��perplexity��happyapi
+REM Set active provider (you, perplexity, happyapi)
 set ACTIVE_PROVIDER=you
 
-REM �����Ƿ������ֶ���¼
+REM Set whether to use manual login
 set USE_MANUAL_LOGIN=false
 
-REM �Ƿ�������Pro�˻�
+REM Whether to allow non-Pro accounts
 set ALLOW_NON_PRO=false
 
-REM �����Զ�����ֹ��(���ڴ������ͣ��������������������ã�ʹ��˫���Ű���)
+REM Set custom end marker (Used for chat completion markers, such as <CHAR_turn>)
 set CUSTOM_END_MARKER="<CHAR_turn>"
 
-REM �����Ƿ������ӳٷ��������������false�����������Դ���
+REM Set whether to enable delay logic. If false, it will request directly.
 set ENABLE_DELAY_LOGIC=false
 
-REM �����Ƿ�������������
+REM Set whether to enable tunnel
 set ENABLE_TUNNEL=false
 
-REM ������������ (localtunnel �� ngrok)
+REM Tunnel type (localtunnel or ngrok)
 set TUNNEL_TYPE=ngrok
 
-REM ����localtunnel������(������Ϊ�������)
+REM Set localtunnel subdomain (leave blank for random)
 set SUBDOMAIN=
 
-REM ���� ngrok AUTH TOKEN
-REM ���� ngrok �˻���������֤���ơ������� ngrok �Ǳ���� "Auth" �����ҵ�����
-REM ����˻��͸����˻�����Ҫ���ô��
-REM ngrok��վ: https://dashboard.ngrok.com
+REM Set ngrok AUTH TOKEN
+REM Visit https://dashboard.ngrok.com to get your auth token.
 set NGROK_AUTH_TOKEN=
 
-REM ���� ngrok �Զ�������
-REM ������ʹ���Լ������������� ngrok �������������
-REM ע�⣺�˹��ܽ������� ngrok �����˻���
-REM ʹ�ô˹���ǰ����ȷ������ ngrok �Ǳ��������Ӳ���֤�˸�������
-REM ��ʽʾ����your-custom-domain.com
-REM ���ʹ������˻�����ʹ���Զ����������뽫�������ա�
+REM Set ngrok custom domain
+REM You can use your own custom domain for ngrok.
 set NGROK_CUSTOM_DOMAIN=
 
-REM ���� https_proxy ����������ʹ�ñ��ص�socks5��http(s)����
-REM ���磬ʹ�� HTTP ������export https_proxy=http://127.0.0.1:7890
-REM ����ʹ�� SOCKS5 ������export https_proxy=socks5://host:port:username:password
+REM Set https_proxy environment variable for local socks5 or http(s) proxy
+REM Example for HTTP proxy: set https_proxy=http://127.0.0.1:7890
+REM Example for SOCKS5 proxy: set https_proxy=socks5://host:port:username:password
 set https_proxy=
 
-REM ���� PASSWORD API����
+REM Set PASSWORD API key
 set PASSWORD=
 
-REM ���� PORT �˿�
+REM Set PORT
 set PORT=8080
 
-REM ����AIģ��(Claudeϵ��ģ��ֱ���ھƹ���ѡ�񼴿�ʹ�ã��޸�`AI_MODEL`�������������л�Claude�����ģ�ͣ�֧�ֵ�ģ���������� (��ο�������ȡ����ģ��))
+REM Set AI model
 set AI_MODEL=
 
-REM �Զ���Ựģʽ
+REM Custom chat mode
 set USE_CUSTOM_MODE=true
 
-REM ����ģʽ�ֻ�
-REM ֻ�е� USE_CUSTOM_MODE �� ENABLE_MODE_ROTATION ������Ϊ true ʱ���Ż�����ģʽ�ֻ����ܡ�
-REM �������Զ���ģʽ��Ĭ��ģʽ֮�䶯̬�л�
+REM Enable mode rotation
+REM Only works when USE_CUSTOM_MODE and ENABLE_MODE_ROTATION are both true.
 set ENABLE_MODE_ROTATION=false
 
-REM �Ƿ���������ģʽ
+REM Whether to enable incognito mode
 set INCOGNITO_MODE=false
 
-REM �����ϴ��ļ���ʽ (docx �� txt) gpt_4o ʹ��txt���ܸ�������
+REM Set upload file format (docx or txt)
 set UPLOAD_FILE_FORMAT=txt
 
 REM ---------------------------------------------------
-REM �����Ƿ��ڿ�ͷ��������
+REM Whether to enable garbled text at start
 set ENABLE_GARBLED_START=false
-REM ���ÿ�ͷ����������С����
+REM Set min length of garbled text at start
 set GARBLED_START_MIN_LENGTH=1000
-REM ���ÿ�ͷ����������󳤶�
+REM Set max length of garbled text at start
 set GARBLED_START_MAX_LENGTH=5000
-REM ���ý�β��������̶�����
+REM Set length of garbled text at end
 set GARBLED_END_LENGTH=500
-REM �����Ƿ��ڽ�β��������
+REM Whether to enable garbled text at end
 set ENABLE_GARBLED_END=false
 REM ---------------------------------------------------
 
-REM ���� Node.js Ӧ�ó���
+REM Run Node.js application
 node index.mjs
 
-REM ��ͣ�ű�ִ��,�ȴ��û���������˳�
+REM Pause script, wait for user key to exit
 pause
