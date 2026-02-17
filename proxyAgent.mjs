@@ -71,12 +71,12 @@ export function setGlobalProxy() {
     const proxyUrl = getProxyUrl();
     if (proxyUrl) {
         globalProxyAgent = createProxyAgent();
-        
-        // 重写 http 和 https 模块的 request 方法
+
+        // Override http and https module request methods
         const originalHttpRequest = http.request;
         const originalHttpsRequest = https.request;
 
-        http.request = function(options, callback) {
+        http.request = function (options, callback) {
             if (typeof options === 'string') {
                 options = new URL(options);
             }
@@ -84,7 +84,7 @@ export function setGlobalProxy() {
             return originalHttpRequest.call(this, options, callback);
         };
 
-        https.request = function(options, callback) {
+        https.request = function (options, callback) {
             if (typeof options === 'string') {
                 options = new URL(options);
             }
@@ -107,5 +107,5 @@ export function setProxyEnvironmentVariables() {
     }
 }
 
-// 全局代理
+// Global proxy
 setGlobalProxy();

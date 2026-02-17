@@ -18,6 +18,12 @@ export function detectBrowser(preferredBrowser = 'auto') {
         browsers.edge = findMacOSBrowser('Microsoft Edge');
     } else if (platform === 'linux') {
         browsers.chrome = findLinuxBrowser('google-chrome');
+
+        // In Arch, chrome installed via AUR is google-chrome-stable
+        if (browsers.chrome == null) {
+            browsers.chrome = findLinuxBrowser('google-chrome-stable');
+        }
+
         browsers.edge = findLinuxBrowser('microsoft-edge');
     }
 
@@ -28,11 +34,11 @@ export function detectBrowser(preferredBrowser = 'auto') {
             return browsers.edge;
         }
     } else if (browsers[preferredBrowser]) {
-        console.log(`使用${preferredBrowser === 'chrome' ? 'Chrome' : 'Edge'}浏览器`);
+        console.log(`Using ${preferredBrowser === 'chrome' ? 'Chrome' : 'Edge'} browser`);
         return browsers[preferredBrowser];
     }
 
-    console.error('未找到Chrome或Edge浏览器，请确保已安装其中之一');
+    console.error('Chrome or Edge browser not found, please ensure one of them is installed');
     process.exit(1);
 }
 

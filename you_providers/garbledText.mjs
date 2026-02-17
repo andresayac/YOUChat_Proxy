@@ -6,7 +6,7 @@ export function getRandomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// 插入乱码
+// Insert garbled text
 export function insertGarbledText(content) {
     const enableGarbledStart = process.env.ENABLE_GARBLED_START === 'true';
     const enableGarbledEnd = process.env.ENABLE_GARBLED_END === 'true';
@@ -15,14 +15,14 @@ export function insertGarbledText(content) {
         return content;
     }
 
-    // 生成指定长度的随机乱码
+    // Generate random garbled text of specific length
     function generateGarbledText(length) {
         return crypto.randomBytes(length).toString('hex');
     }
 
     let garbledContent = content;
 
-    // 配置参数
+    // Configuration parameters
     const startMinLength = parseInt(process.env.GARBLED_START_MIN_LENGTH) || 1000;
     const startMaxLength = parseInt(process.env.GARBLED_START_MAX_LENGTH) || 5000;
 
@@ -33,7 +33,7 @@ export function insertGarbledText(content) {
 
         const byteLength = Math.ceil(startGarbledLength / 2);
 
-        // 生成乱码
+        // Generate garbled text
         const startPlaceholder = generateGarbledText(byteLength);
 
         garbledContent = startPlaceholder + '\n\n\n' + garbledContent.trim();

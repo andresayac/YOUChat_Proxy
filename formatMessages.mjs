@@ -1,8 +1,8 @@
 export function formatMessages(messages, proxyModel, randomFileName) {
-    // 检查是否是 Claude 模型
+    // Check if it is a Claude model
     const isClaudeModel = proxyModel.toLowerCase().includes('claude');
 
-    // 定义角色映射
+    // Define role mapping
     const roleFeatures = getRoleFeatures(isClaudeModel);
 
     messages = convertRoles(messages, roleFeatures);
@@ -19,7 +19,7 @@ export function formatMessages(messages, proxyModel, randomFileName) {
         });
     }
 
-    // 如果没有找到 AI Round 0 标记，直接返回处理后的消息数组
+    // If no AI Round 0 tag is found, directly return the processed message array
     if (!hasAIRound0) {
         return formattedMessages;
     }
@@ -30,7 +30,7 @@ export function formatMessages(messages, proxyModel, randomFileName) {
     let isFirstUserFound = false;
     let lastAssistantRound = 0;
 
-    // 查找初始回合数
+    // Find initial round number
     let initialRound = 0;
     for (let i = 0; i < formattedMessages.length; i++) {
         if (formattedMessages[i].role === roleFeatures.userRole) {
@@ -49,7 +49,7 @@ export function formatMessages(messages, proxyModel, randomFileName) {
         }
     }
 
-    // 找到最后一个有效的 user 消息索引
+    // Find the last valid user message index
     let lastUserIndex = -1;
     let contextEndIndex = formattedMessages.length;
     for (let i = formattedMessages.length - 1; i >= 0; i--) {
@@ -71,7 +71,7 @@ export function formatMessages(messages, proxyModel, randomFileName) {
         if (message.content.includes('<!-- AI Round 0 begins. -->')) {
             processedMessages.push({
                 role: message.role,
-                content: message.content.replace('<!-- AI Round 0 begins. -->', '--------------------<建立锚点开始处>--------------------\n<!-- AI Round 0 begins. -->')
+                content: message.content.replace('<!-- AI Round 0 begins. -->', '--------------------<Start establishing anchor>--------------------\n<!-- AI Round 0 begins. -->')
             });
             continue;
         }
@@ -86,10 +86,10 @@ export function formatMessages(messages, proxyModel, randomFileName) {
 
             let roundInfo = '';
             if (i === lastUserIndex) {
-                roundInfo = `{{最新${roleFeatures.userRole}:(${userRoundCounter})回合|${roleFeatures.assistantRole}:(${userRoundCounter + 1})回合开始，基于上回(${descriptionPointCounter - 1}(${roleFeatures.userRole}${userRoundCounter - 1}|${roleFeatures.assistantRole}${userRoundCounter - 1}))中的历史锚点内的\`${roleFeatures.assistantRole}:\`发言末尾衔接，叙事创作时不要只关注最近故事动向，尽可能的记住多个历史锚点中的"${roleFeatures.assistantRole}:..."故事内容，保持思路清晰来响应下一个回复:}}\n`;
+                roundInfo = `{{Latest ${roleFeatures.userRole}:(${userRoundCounter}) round|${roleFeatures.assistantRole}:(${userRoundCounter + 1}) round begins. Based on the previous (${descriptionPointCounter - 1}(${roleFeatures.userRole}${userRoundCounter - 1}|${roleFeatures.assistantRole}${userRoundCounter - 1})) historical anchor within the \`${roleFeatures.assistantRole}:\` speech end connection, do not only focus on the recent story movements when creating narrative, try to remember the "${roleFeatures.assistantRole}:..." story content in multiple historical anchors as much as possible, keep your thoughts clear to respond to the next reply:}}\n`;
             } else {
                 const nextAssistantRound = userRoundCounter + 1;
-                roundInfo = `{{历史第 ${roleFeatures.userRole} = 回合${userRoundCounter}|${roleFeatures.assistantRole} = 回合${nextAssistantRound} 开始，标记锚点:[${descriptionPointCounter}]}}\n`;
+                roundInfo = `{{Historical ${roleFeatures.userRole} = Round ${userRoundCounter}|${roleFeatures.assistantRole} = Round ${nextAssistantRound} begins, mark anchor:[${descriptionPointCounter}]}}\n`;
             }
             message.content = roundInfo + message.content;
         } else if (message.role === roleFeatures.assistantRole && i < lastUserIndex) {
@@ -100,7 +100,7 @@ export function formatMessages(messages, proxyModel, randomFileName) {
             }
 
             if (message.content.includes('<CHAR_turn>')) {
-                message.content += `\n--------------------<历史锚点[${descriptionPointCounter}]结束>--------------------`;
+                message.content += `\n--------------------<Historical anchor [${descriptionPointCounter}] ended>--------------------`;
             }
         }
 
@@ -126,7 +126,7 @@ function getRoleFeatures(isClaudeModel) {
     }
 }
 
-// 转换角色
+// Convert roles
 function convertRoles(messages, roleFeatures) {
     return messages.map(message => ({
         ...message,

@@ -4,20 +4,20 @@ import fs from "fs";
 import { execSync } from "child_process";
 
 function getGitRevision() {
-	// get git revision and branch
-	try {
-		const revision = execSync("git rev-parse --short HEAD", { stdio: "pipe" }).toString().trim();
-		const branch = execSync("git rev-parse --abbrev-ref HEAD", { stdio: "pipe" }).toString().trim();
-		return { revision, branch };
-	} catch (e) {
-		return { revision: "unknown", branch: "unknown" };
-	}
+    // get git revision and branch
+    try {
+        const revision = execSync("git rev-parse --short HEAD", { stdio: "pipe" }).toString().trim();
+        const branch = execSync("git rev-parse --abbrev-ref HEAD", { stdio: "pipe" }).toString().trim();
+        return { revision, branch };
+    } catch (e) {
+        return { revision: "unknown", branch: "unknown" };
+    }
 }
 
 function createDirectoryIfNotExists(dirPath) {
-	if (!fs.existsSync(dirPath)) {
-		fs.mkdirSync(dirPath, { recursive: true });
-	}
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+    }
 }
 
 function extractCookie(cookies) {
@@ -38,7 +38,7 @@ function extractCookie(cookies) {
 function getSessionCookie(jwtSession, jwtToken, ds, dsr) {
     let sessionCookie = [];
 
-    // 处理旧版 cookie
+    // Handle legacy cookies
     if (jwtSession && jwtToken) {
         sessionCookie = [
             {
@@ -84,7 +84,7 @@ function getSessionCookie(jwtSession, jwtToken, ds, dsr) {
         ];
     }
 
-    // 处理新版 cookie
+    // Handle modern version cookies
     if (ds) {
         sessionCookie.push({
             name: "DS",
@@ -110,8 +110,8 @@ function getSessionCookie(jwtSession, jwtToken, ds, dsr) {
         });
     }
 
-    // 添加隐身模式 cookie（如果启用）
-    if(process.env.INCOGNITO_MODE === "true") {
+    // Add incognito mode cookie (if enabled)
+    if (process.env.INCOGNITO_MODE === "true") {
         sessionCookie.push({
             name: "incognito",
             value: "true",
@@ -125,34 +125,34 @@ function getSessionCookie(jwtSession, jwtToken, ds, dsr) {
 }
 
 function sleep(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function createDocx(content) {
     let paragraphs = [];
-	content.split("\n").forEach((line) => {
-		paragraphs.push(
-			new docx.Paragraph({
-				children: [new docx.TextRun(line)],
-			})
-		);
-	});
+    content.split("\n").forEach((line) => {
+        paragraphs.push(
+            new docx.Paragraph({
+                children: [new docx.TextRun(line)],
+            })
+        );
+    });
     let doc = new docx.Document({
-		sections: [
-			{
-				properties: {},
-				children: paragraphs,
-			},
-		],
-	});
-	return docx.Packer.toBuffer(doc).then((buffer) => buffer);
+        sections: [
+            {
+                properties: {},
+                children: paragraphs,
+            },
+        ],
+    });
+    return docx.Packer.toBuffer(doc).then((buffer) => buffer);
 }
 // eventStream util
 function createEvent(event, data) {
-	// if data is object, stringify it
-	if (typeof data === "object") {
-		data = JSON.stringify(data);
-	}
-	return `event: ${event}\ndata: ${data}\n\n`;
+    // if data is object, stringify it
+    if (typeof data === "object") {
+        data = JSON.stringify(data);
+    }
+    return `event: ${event}\ndata: ${data}\n\n`;
 }
 
 function extractPerplexityCookie(cookieString) {
@@ -179,7 +179,7 @@ function getPerplexitySessionCookie(extractedCookie) {
         });
     }
 
-    // 添加无痕模式 cookie (如果启用)
+    // Add incognito mode cookie (if enabled)
     if (process.env.INCOGNITO_MODE === "true") {
         sessionCookie.push({
             name: "pplx.is-incognito",

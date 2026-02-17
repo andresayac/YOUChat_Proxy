@@ -219,6 +219,10 @@ class YouProvider {
                             console.log(`  Status: ${session.subscriptionInfo.status}`);
                             console.log(`  Billing Interval: ${session.subscriptionInfo.interval}`);
                         }
+                        if (session.subscriptionInfo.research10x) {
+                            const r10 = session.subscriptionInfo.research10x;
+                            console.log(`  Research 10x: Access=${r10.has_access}, Used=${r10.used_calls}/${r10.max_calls}`);
+                        }
                         if (session.subscriptionInfo.cancelAtPeriodEnd) {
                             console.log('  Note: This subscription is set to be cancelled after the current cycle ends');
                         }
@@ -356,24 +360,29 @@ class YouProvider {
                         const json = JSON.parse(content);
                         const allowNonPro = process.env.ALLOW_NON_PRO === "true";
 
-                        if (session.isTeamAccount) {
+                        const hasOrgSub = Array.isArray(json.org_subscriptions) && json.org_subscriptions.length > 0;
+                        const hasPersonalSub = Array.isArray(json.subscriptions) && json.subscriptions.length > 0;
+
+                        if (hasOrgSub || session.isTeamAccount) {
                             console.log(`${currentUsername} Validation successful -> Team Account`);
                             session.valid = true;
                             session.isTeam = true;
+                            session.isPro = false;
 
                             if (!session.youpro_subscription) {
                                 session.youpro_subscription = "true";
                             }
 
                             // Get Team subscription info
-                            const teamSubscriptionInfo = await this.getTeamSubscriptionInfo(json.org_subscriptions?.[0]);
+                            const teamSubscriptionInfo = await this.getTeamSubscriptionInfo(json.org_subscriptions?.[0], json.research_10x);
                             if (teamSubscriptionInfo) {
                                 session.subscriptionInfo = teamSubscriptionInfo;
                             }
-                        } else if (Array.isArray(json.subscriptions) && json.subscriptions.length > 0) {
+                        } else if (hasPersonalSub) {
                             console.log(`${currentUsername} Validation successful -> Pro Account`);
                             session.valid = true;
                             session.isPro = true;
+                            session.isTeam = false;
 
                             if (!session.youpro_subscription) {
                                 session.youpro_subscription = "true";
@@ -428,18 +437,18 @@ class YouProvider {
         await Promise.all(validationPromises);
     }
 
-    async getTeamSubscriptionInfo(subscription) {
+    async getTeamSubscriptionInfo(subscription, research10x = null) {
         if (!subscription) {
             console.warn('No valid Team subscription info found');
             return null;
         }
 
-        const endDate = new Date(subscription.current_period_end_date);
+        const endDate = new Date(subscription.current_period_end_date || subscription.expires_at || subscription.current_period_end);
         const today = new Date();
 
         const daysRemaining = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
 
-        return {
+        const info = {
             expirationDate: endDate.toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'long',
@@ -447,15 +456,21 @@ class YouProvider {
             }),
             daysRemaining: daysRemaining,
             planName: subscription.plan_name,
-            cancelAtPeriodEnd: subscription.canceled_at !== null,
-            isActive: subscription.is_active,
+            cancelAtPeriodEnd: subscription.cancel_at_period_end ?? (subscription.canceled_at !== undefined ? subscription.canceled_at !== null : false),
+            isActive: subscription.is_active ?? (subscription.status === 'active'),
             status: subscription.status,
             tenantId: subscription.tenant_id,
             quantity: subscription.quantity,
-            usedQuantity: subscription.used_quantity,
+            usedQuantity: subscription.used_quantity || 0,
             interval: subscription.interval,
             amount: subscription.amount
         };
+
+        if (research10x) {
+            info.research10x = research10x;
+        }
+
+        return info;
     }
 
     async focusBrowserWindow(title) {
@@ -497,12 +512,20 @@ class YouProvider {
                 });
                 return await res.json();
             });
-            if (response && response.subscriptions && response.subscriptions.length > 0) {
-                const subscription = response.subscriptions[0];
-                if (subscription.start_date && subscription.interval) {
+
+            const subscription = (response?.org_subscriptions?.[0]) || (response?.subscriptions?.[0]);
+            const research10x = response?.research_10x;
+
+            if (subscription) {
+                const today = new Date();
+                let expirationDate;
+
+                if (subscription.current_period_end_date) {
+                    expirationDate = new Date(subscription.current_period_end_date);
+                } else if (subscription.expires_at) {
+                    expirationDate = new Date(subscription.expires_at);
+                } else if (subscription.start_date && subscription.interval) {
                     const startDate = new Date(subscription.start_date);
-                    const today = new Date();
-                    let expirationDate;
 
                     // Calculate subscription end date
                     if (subscription.interval === 'month') {
@@ -511,31 +534,34 @@ class YouProvider {
                         expirationDate = new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate());
                     } else {
                         console.log(`Unknown subscription interval: ${subscription.interval}`);
-                        return null;
                     }
 
-                    // Calculate number of intervals passed from start date to today
-                    const intervalsPassed = Math.floor((today - startDate) / (subscription.interval === 'month' ? 30 : 365) / (24 * 60 * 60 * 1000));
+                    if (expirationDate) {
+                        // Calculate number of intervals passed from start date to today
+                        const intervalsPassed = Math.floor((today - startDate) / (subscription.interval === 'month' ? 30 : 365) / (24 * 60 * 60 * 1000));
 
-                    // Calculate expiration date
-                    if (subscription.interval === 'month') {
-                        expirationDate.setMonth(expirationDate.getMonth() + intervalsPassed);
-                    } else {
-                        expirationDate.setFullYear(expirationDate.getFullYear() + intervalsPassed);
-                    }
-
-                    // If the calculated date is still in the past, add another interval
-                    if (expirationDate <= today) {
+                        // Calculate expiration date
                         if (subscription.interval === 'month') {
-                            expirationDate.setMonth(expirationDate.getMonth() + 1);
+                            expirationDate.setMonth(expirationDate.getMonth() + intervalsPassed);
                         } else {
-                            expirationDate.setFullYear(expirationDate.getFullYear() + 1);
+                            expirationDate.setFullYear(expirationDate.getFullYear() + intervalsPassed);
+                        }
+
+                        // If the calculated date is still in the past, add another interval
+                        if (expirationDate <= today) {
+                            if (subscription.interval === 'month') {
+                                expirationDate.setMonth(expirationDate.getMonth() + 1);
+                            } else {
+                                expirationDate.setFullYear(expirationDate.getFullYear() + 1);
+                            }
                         }
                     }
+                }
 
+                if (expirationDate) {
                     const daysRemaining = Math.ceil((expirationDate - today) / (1000 * 60 * 60 * 24));
 
-                    return {
+                    const info = {
                         expirationDate: expirationDate.toLocaleDateString('en-US', {
                             year: 'numeric',
                             month: 'long',
@@ -543,10 +569,12 @@ class YouProvider {
                         }),
                         daysRemaining: daysRemaining,
                         planName: subscription.plan_name,
-                        cancelAtPeriodEnd: subscription.cancel_at_period_end
+                        cancelAtPeriodEnd: subscription.cancel_at_period_end ?? (subscription.canceled_at !== undefined ? subscription.canceled_at !== null : false)
                     };
+                    if (research10x) info.research10x = research10x;
+                    return info;
                 } else {
-                    console.log('Missing start_date or interval field in subscription info');
+                    console.log('Unable to calculate expiration date');
                     return null;
                 }
             } else {

@@ -3,7 +3,7 @@ import { config as youConfig } from './config.mjs';
 
 class ProviderManager {
     constructor() {
-        // 根据环境变量初始化提供者
+        // Initialize provider based on environment variables
         const activeProvider = process.env.ACTIVE_PROVIDER || 'you';
 
         switch (activeProvider) {

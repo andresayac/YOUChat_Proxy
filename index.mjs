@@ -109,7 +109,7 @@ try {
     config = configModule.config;
 } catch (e) {
     console.error(e);
-    console.error("config.mjs 不存在或者有错误，请检查");
+    console.error("config.mjs does not exist or has errors, please check.");
     process.exit(1);
 }
 
@@ -146,36 +146,36 @@ app.get("/v1/models", OpenAIApiKeyAuth, (req, res) => {
 });
 // handle openai format model request
 app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
-    // 用于存储请求体
+    // For storing request body
     req.rawBody = "";
     req.setEncoding("utf8");
 
-    // 接收数据
+    // Receive data
     req.on("data", function (chunk) {
         req.rawBody += chunk;
     });
 
-    // 数据接收完毕后处理请求
+    // Process request after data reception is complete
     req.on("end", async () => {
-        console.log("处理 OpenAI 格式的请求");
+        console.log("Processing OpenAI format request");
         res.setHeader("Content-Type", "text/event-stream;charset=utf-8");
         res.setHeader("Access-Control-Allow-Origin", "*");
         let jsonBody = JSON.parse(req.rawBody);
 
-        // 规范化消息
+        // Normalize messages
         jsonBody.messages = openaiNormalizeMessages(jsonBody.messages);
 
         console.log("message length:" + jsonBody.messages.length);
 
-        // 获取当前 Provider 实例
+        // Get current Provider instance
         const currentProvider = provider.provider;
 
-        // 获取会话列表
+        // Get session list
         const sessions = currentProvider.sessions;
 
-        // 检查是否有可用的会话
+        // Check for available sessions
         if (!sessions || Object.keys(sessions).length === 0) {
-            console.error('没有可用的会话，请检查 Provider 的初始化是否成功，或检查配置文件。');
+            console.error('No available sessions, please check if Provider initialized successfully or check config file.');
             res.status(503).json({
                 error: {
                     message: "No available sessions.",
@@ -187,11 +187,11 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
             return;
         }
 
-        // 随机选择一个会话
+        // Randomly select a session
         let randomSession = Object.keys(sessions)[Math.floor(Math.random() * Object.keys(sessions).length)];
         console.log("Using session " + randomSession);
 
-        // 尝试映射模型
+        // Try to map model
         if (jsonBody.model && modelMappping[jsonBody.model]) {
             jsonBody.model = modelMappping[jsonBody.model];
         }
@@ -208,7 +208,7 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
         }
         console.log("Using model " + jsonBody.model);
 
-        // 调用 provider 获取回复
+        // Call provider to get response
         try {
             const { completion, cancel } = await provider.getCompletion({
                 username: randomSession,
@@ -220,7 +220,7 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                 tool_choice: jsonBody.tool_choice
             });
 
-            // 监听开始事件
+            // Listen for start event
             completion.on("start", (id) => {
                 if (jsonBody.stream) {
                     // Send message start
@@ -242,7 +242,7 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                 }
             });
 
-            // 监听完成事件
+            // Listen for completion event
             completion.on("completion", (id, data) => {
                 if (jsonBody.stream) {
                     let delta = {};
@@ -311,7 +311,7 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                 }
             });
 
-            // 监听结束事件
+            // Listen for end event
             completion.on("end", () => {
                 if (jsonBody.stream) {
                     // Send usage chunk before [DONE]
@@ -339,7 +339,7 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                 }
             });
 
-            // 监听错误事件
+            // Listen for error event
             completion.on("error", (err) => {
                 console.error("Provider stream error:", err);
                 const errorMessage = "Stream Error: " + (err.message || "Unknown error");
@@ -379,7 +379,7 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                 }
             });
 
-            // 监听客户端关闭事件
+            // Listen for client closed event
             res.on("close", () => {
                 console.log(" > [Client closed]");
                 completion.removeAllListeners();
@@ -387,7 +387,7 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
             });
         } catch (error) {
             console.error(error);
-            const errorMessage = "Error occurred, please check the log.\n\n出现错误，请检查日志：<pre>" + (error.stack || error) + "</pre>";
+            const errorMessage = "Error occurred, please check the log.\n\nAn error occurred, please check the log: <pre>" + (error.stack || error) + "</pre>";
             if (jsonBody.stream) {
                 res.write(
                     createEvent("data", {
@@ -482,16 +482,16 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
     });
 
     req.on("end", async () => {
-        console.log("处理 Anthropic 格式的请求");
+        console.log("Processing Anthropic format request");
         res.setHeader("Content-Type", "text/event-stream;charset=utf-8");
         res.setHeader("Access-Control-Allow-Origin", "*");
         let jsonBody = JSON.parse(req.rawBody);
 
-        // 处理消息格式
+        // Process message format
         jsonBody.messages = anthropicNormalizeMessages(jsonBody.messages);
 
         if (jsonBody.system) {
-            // 把系统消息加入 messages 的首条
+            // Add system message to the beginning of messages
             jsonBody.messages.unshift({ role: "system", content: jsonBody.system });
         }
         console.log("message length:" + jsonBody.messages.length);
@@ -502,9 +502,9 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
         // 获取会话列表
         const sessions = currentProvider.sessions;
 
-        // 检查是否有可用的会话
+        // Check for available sessions
         if (!sessions || Object.keys(sessions).length === 0) {
-            console.error('没有可用的会话，请检查 Provider 的初始化是否成功，或检查配置文件。');
+            console.error('No available sessions, please check if Provider initialized successfully or check config file.');
             res.write(JSON.stringify({
                 error: 'No available sessions.',
             }));
@@ -512,7 +512,7 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
             return;
         }
 
-        // 随机选择一个会话
+        // Randomly select a session
         let randomSession = Object.keys(sessions)[Math.floor(Math.random() * Object.keys(sessions).length)];
         console.log("Using session " + randomSession);
 
@@ -571,7 +571,7 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
                         delta: { type: "text_delta", text: text },
                     }));
                 } else {
-                    // 只会发一次，发送final response
+                    // Send final response once
                     res.write(JSON.stringify({
                         id: id,
                         content: [
@@ -608,7 +608,7 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
 
         } catch (error) {
             console.error(error);
-            const errorMessage = "Error occurred, please check the log.\\n\\n出现错误，请检查日志：<pre>" + (error.stack || error) + "</pre>";
+            const errorMessage = "Error occurred, please check the log.\\n\\nAn error occurred, please check the log: <pre>" + (error.stack || error) + "</pre>";
             if (jsonBody.stream) {
                 res.write(createEvent("content_block_delta", {
                     type: "content_block_delta",
@@ -630,21 +630,21 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
     });
 });
 
-// 辅助函数：规范化消息格式
+// Helper function: Normalize message format
 function anthropicNormalizeMessages(messages) {
     return messages.map(message => {
         if (typeof message.content === 'string') {
             return message;
         } else if (Array.isArray(message.content)) {
-            // 新版格式，提取文本内容
+            // New version format, extract text content
             const textContent = message.content
                 .filter(item => item.type === 'text')
                 .map(item => item.text)
                 .join('\n');
             return { ...message, content: textContent };
         } else {
-            // 未知格式，返回原始消息
-            console.warn('未知的消息格式:', message);
+            // Unknown format, return original message
+            console.warn('Unknown message format:', message);
             return message;
         }
     });
@@ -655,7 +655,7 @@ function anthropicNormalizeMessages(messages) {
 app.use((req, res, next) => {
     const { revision, branch } = getGitRevision();
     res.status(404).send("Not Found (YouChat_Proxy " + revision + "@" + branch + ")");
-    console.log("收到了错误路径的请求，请检查您使用的API端点是否正确。")
+    console.log("Received a request with an incorrect path, please check if the API endpoint you are using is correct.")
 });
 
 const createLocaltunnel = async (port, subdomain) => {
@@ -666,11 +666,11 @@ const createLocaltunnel = async (port, subdomain) => {
 
     try {
         const tunnel = await localtunnel(tunnelOptions);
-        console.log(`隧道已成功创建，可通过以下URL访问: ${tunnel.url}/v1`);
-        tunnel.on("close", () => console.log("已关闭隧道"));
+        console.log(`Tunnel successfully created, accessible via: ${tunnel.url}/v1`);
+        tunnel.on("close", () => console.log("Tunnel closed"));
         return tunnel;
     } catch (error) {
-        console.error("创建localtunnel隧道失败:", error);
+        console.error("Failed to create localtunnel:", error);
     }
 };
 
@@ -690,14 +690,14 @@ const createNgrok = async (port, authToken, customDomain, subdomain) => {
 
     try {
         const url = await ngrok.connect(ngrokOptions);
-        console.log(`隧道已成功创建，可通过以下URL访问: ${url}/v1`);
+        console.log(`Tunnel successfully created, accessible via: ${url}/v1`);
         process.on('SIGTERM', async () => {
             await ngrok.kill();
-            console.log("已关闭隧道");
+            console.log("Tunnel closed");
         });
         return url;
     } catch (error) {
-        console.error("创建ngrok隧道失败:", error);
+        console.error("Failed to create ngrok tunnel:", error);
     } finally {
         if (originalHttpProxy) process.env.HTTP_PROXY = originalHttpProxy;
         if (originalHttpsProxy) process.env.HTTPS_PROXY = originalHttpsProxy;
@@ -705,7 +705,7 @@ const createNgrok = async (port, authToken, customDomain, subdomain) => {
 };
 
 const createTunnel = async (tunnelType, port) => {
-    console.log(`创建${tunnelType}隧道中...`);
+    console.log(`Creating ${tunnelType} tunnel...`);
     if (tunnelType === "localtunnel") {
         return createLocaltunnel(port, process.env.SUBDOMAIN);
     } else if (tunnelType === "ngrok") {
@@ -752,3 +752,18 @@ function OpenAIApiKeyAuth(req, res, next) {
 
     next();
 }
+
+// Path: cookieUtils.mjs
+class ClientState {
+    #closed = false;
+
+    setClosed(value) {
+        this.#closed = Boolean(value);
+    }
+
+    isClosed() {
+        return this.#closed;
+    }
+}
+
+export const clientState = new ClientState();
