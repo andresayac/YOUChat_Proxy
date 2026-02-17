@@ -242,6 +242,8 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                 }
             });
 
+            let hasTools = false;
+
             // Listen for completion event
             completion.on("completion", (id, data) => {
                 if (jsonBody.stream) {
@@ -250,8 +252,13 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                         delta = { content: data };
                     } else if (data.tool_calls) {
                         delta = { tool_calls: data.tool_calls };
+                        hasTools = true;
                     } else if (data.content) {
                         delta = { content: data.content };
+                        if (data.tool_calls) {
+                            delta.tool_calls = data.tool_calls;
+                            hasTools = true;
+                        }
                     }
 
                     // Send message delta
@@ -277,12 +284,11 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                     let message = { role: "assistant" };
                     if (typeof data === 'string') {
                         message.content = data;
-                    } else if (data.tool_calls) {
-                        message.tool_calls = data.tool_calls;
-                        message.content = null;
                     } else {
                         message.content = data.content || null;
-                        if (data.tool_calls) message.tool_calls = data.tool_calls;
+                        if (data.tool_calls) {
+                            message.tool_calls = data.tool_calls;
+                        }
                     }
 
                     res.write(
@@ -297,7 +303,7 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                                     index: 0,
                                     message: message,
                                     logprobs: null,
-                                    finish_reason: "stop",
+                                    finish_reason: data.tool_calls ? "tool_calls" : "stop",
                                 },
                             ],
                             usage: {
@@ -323,7 +329,14 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                                 created: Math.floor(new Date().getTime() / 1000),
                                 model: jsonBody.model,
                                 system_fingerprint: "fp_you_proxy",
-                                choices: [],
+                                choices: [
+                                    {
+                                        index: 0,
+                                        delta: {},
+                                        logprobs: null,
+                                        finish_reason: hasTools ? "tool_calls" : "stop",
+                                    },
+                                ],
                                 usage: {
                                     prompt_tokens: 0,
                                     completion_tokens: 0,

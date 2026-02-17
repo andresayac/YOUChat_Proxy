@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import { v4 as uuidV4 } from "uuid";
+import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -736,22 +737,282 @@ class YouProvider {
         }
     }
 
+    /**
+     * Extracts assistant profile (name, instructions) and chat context from messages.
+     * Follows the 'GitHub Copilot dynamic' of splitting static and dynamic parts.
+     */
+    getAssistantProfile(messages, tools = null) {
+        // Look for the first system message
+        const systemMessage = messages.find(m => m.role.toLowerCase() === 'system');
+
+        let initialInstructions = "You are a helpful AI assistant.";
+        let name = "AI Assistant";
+        let content = "";
+
+        if (systemMessage) {
+            content = systemMessage.content;
+            // Attempt to extract name
+            const nameMatch = content.match(/asked for your name, you must respond with \\?"([^\\?"]+)\\?"/i);
+            if (nameMatch) {
+                name = nameMatch[1];
+            } else {
+                const agentNameMatch = content.match(/You are ([^,.]+)/i);
+                if (agentNameMatch) name = agentNameMatch[1].trim().substring(0, 20);
+            }
+            initialInstructions = content;
+        }
+
+        // Define markers that indicate dynamic context (workspace/environment info)
+        const dynamicMarkers = [
+            '<environment_info>',
+            '<workspace_info>',
+            '<context>',
+            '<userRequest>',
+            'Local context:',
+            'Current File:'
+        ];
+
+        let staticPart = initialInstructions;
+        let dynamicPart = "";
+
+        // Find the earliest starting dynamic marker
+        let firstDynamicIndex = -1;
+        for (const marker of dynamicMarkers) {
+            const index = initialInstructions.indexOf(marker);
+            if (index !== -1 && (firstDynamicIndex === -1 || index < firstDynamicIndex)) {
+                firstDynamicIndex = index;
+            }
+        }
+
+        if (firstDynamicIndex !== -1) {
+            staticPart = initialInstructions.substring(0, firstDynamicIndex);
+            dynamicPart = initialInstructions.substring(firstDynamicIndex);
+        }
+
+        let instructions = staticPart.trim();
+        let toolsPart = "";
+
+        if (tools && tools.length > 0) {
+            toolsPart = "\n\n# Available Tools\n" + JSON.stringify(tools, null, 2);
+        }
+
+        // You.com has a ~10,000 character limit for custom assistant instructions
+        // We prioritize core instructions over tools in the assistant definition
+        if ((instructions + toolsPart).length > 10000) {
+            if (instructions.length > 10000) {
+                console.warn(`Instructions too long (${instructions.length} chars), truncating to 10,000 for assistant definition...`);
+                // If instructions alone are too long, tools definitely go to chatContext
+                dynamicPart = instructions.substring(10000) + toolsPart + "\n" + dynamicPart;
+                instructions = instructions.substring(0, 10000);
+            } else {
+                // Instructions fit, but tools make it too long. Put tools in chatContext.
+                console.log("Assistant instructions + tools > 10k. Moving tools to chat context.");
+                dynamicPart = toolsPart + "\n" + dynamicPart;
+            }
+        } else {
+            // Everything fits in the assistant definition
+            instructions = instructions + toolsPart;
+        }
+
+        return {
+            instructions: instructions.trim(),
+            name,
+            chatContext: dynamicPart.trim()
+        };
+    }
+
+    /**
+     * Parses tool calls from the model's response text.
+     * Handles both XML-like <tool_call> tags and markdown code blocks.
+     */
+    parseToolCalls(content) {
+        const toolCalls = [];
+        let remainingText = content;
+        const processedRanges = [];
+
+        // Pattern 1: <tool_call>JSON</tool_call>
+        const xmlPattern = /<tool_call>([\s\S]*?)<\/tool_call>/gi;
+        let match;
+        while ((match = xmlPattern.exec(content)) !== null) {
+            try {
+                const jsonStr = match[1].trim();
+                const callData = JSON.parse(jsonStr);
+                if (callData.name) {
+                    toolCalls.push({
+                        index: toolCalls.length,
+                        id: `call_${uuidV4().substring(0, 8)}`,
+                        type: "function",
+                        function: {
+                            name: callData.name,
+                            arguments: JSON.stringify(callData.arguments || {})
+                        }
+                    });
+                    processedRanges.push({ start: match.index, end: match.index + match[0].length });
+                }
+            } catch (e) {
+                // Not valid JSON, skip
+            }
+        }
+
+        // Pattern 2: ```tool_call JSON ``` or ```json JSON ```
+        const codeBlockPattern = /(`{3,})(tool_call|json)\s*\n([\s\S]*?)\n\1/gi;
+        while ((match = codeBlockPattern.exec(remainingText)) !== null) {
+            try {
+                const jsonStr = match[3].trim();
+                const callData = JSON.parse(jsonStr);
+                if (callData.name) {
+                    toolCalls.push({
+                        index: toolCalls.length,
+                        id: `call_${uuidV4().substring(0, 8)}`,
+                        type: "function",
+                        function: {
+                            name: callData.name,
+                            arguments: JSON.stringify(callData.arguments || {})
+                        }
+                    });
+                    processedRanges.push({ start: match.index, end: match.index + match[0].length });
+                }
+            } catch (e) {
+                // Not valid JSON
+            }
+        }
+
+        // Pattern 3: Direct JSON object {"name": ...} if not already processed
+        if (toolCalls.length === 0) {
+            const jsonDirectPattern = /\{"name"\s*:\s*"[^"]+",\s*"arguments"\s*:[\s\S]*?\}/g;
+            while ((match = jsonDirectPattern.exec(content)) !== null) {
+                try {
+                    const callData = JSON.parse(match[0]);
+                    if (callData.name && callData.arguments) {
+                        toolCalls.push({
+                            index: toolCalls.length,
+                            id: `call_${uuidV4().substring(0, 8)}`,
+                            type: "function",
+                            function: {
+                                name: callData.name,
+                                arguments: JSON.stringify(callData.arguments)
+                            }
+                        });
+                        processedRanges.push({ start: match.index, end: match.index + match[0].length });
+                    }
+                } catch (e) {
+                    // Not valid
+                }
+            }
+        }
+
+        // Clean up text by removing tool call blocks (reverse order to maintain indices)
+        processedRanges.sort((a, b) => b.start - a.start);
+        for (const range of processedRanges) {
+            remainingText = remainingText.substring(0, range.start) + remainingText.substring(range.end);
+        }
+
+        return {
+            tool_calls: toolCalls.length > 0 ? toolCalls : null,
+            text: remainingText.trim()
+        };
+    }
+
     async getCompletion({
         username,
         messages,
-        browserInstance,
+        browserInstance: providedBrowserInstance,
         stream = false,
         proxyModel,
         useCustomMode = false,
-        modeSwitched = false
+        modeSwitched = false,
+        tools = null,
+        tool_choice = null
     }) {
         if (this.networkMonitor.isNetworkBlocked()) {
             throw new Error("Network exception, please try again later");
         }
-        const session = this.sessions[username];
+
+        let session = this.sessions[username];
+        let browserInstance = providedBrowserInstance;
+        let isInternalSessionManagement = false;
+
+        // If no browserInstance provided, we try to use sessionManager to get one
+        if (!browserInstance) {
+            try {
+                // If the session isn't already set up for this user, or if we need a fresh lock
+                const avail = await this.sessionManager.getAvailableSessions();
+                username = avail.selectedUsername;
+                session = this.sessions[username];
+                browserInstance = avail.browserInstance;
+                modeSwitched = avail.modeSwitched;
+                isInternalSessionManagement = true;
+                console.log(`Acquired session ${username} and browser ${browserInstance.id} internally.`);
+            } catch (err) {
+                // Fallback: if getAvailableSessions fails but we have a username, try to just get a browser
+                if (session) {
+                    browserInstance = await this.sessionManager.getAvailableBrowser();
+                    isInternalSessionManagement = true;
+                } else {
+                    throw err;
+                }
+            }
+        }
+
         if (!session || !session.valid) {
             throw new Error(`Session for user ${username} is invalid`);
         }
+
+        // Detect if the last message is a tool result (continuation)
+        const lastMsg = messages[messages.length - 1];
+        const lastRole = lastMsg?.role?.toLowerCase();
+
+        if (lastRole === 'tool' || lastRole === 'function') {
+            console.log("[SESSION] Tool result detected at the end of history. Moving results to a consolidated user instruction.");
+            // Find the last assistant message and take everything after it
+            let lastAssistantIdx = -1;
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role.toLowerCase() === 'assistant') {
+                    lastAssistantIdx = i;
+                    break;
+                }
+            }
+
+            const toolResults = [];
+            const startIndex = lastAssistantIdx >= 0 ? lastAssistantIdx + 1 : 0;
+
+            for (let i = startIndex; i < messages.length; i++) {
+                const m = messages[i];
+                if (m.role.toLowerCase() === 'tool' || m.role.toLowerCase() === 'function') {
+                    const toolName = m.name || m.tool_call_id || 'unknown_tool';
+                    toolResults.push(`[Tool Result for ${toolName}]:\n${m.content}`);
+                }
+            }
+
+            if (toolResults.length > 0) {
+                const combinedResult = toolResults.join("\n\n");
+                const instruction = `The tool(s) have been executed successfully. Here are the results:\n\n${combinedResult}\n\nBased on these results, please continue with the next step or provide your final analysis. Do NOT call the same tool again with the same parameters.`;
+
+                // Replace everything from the first tool result with this consolidated message
+                messages.splice(startIndex, messages.length - startIndex, { role: 'user', content: instruction });
+                console.log(`Consolidated ${toolResults.length} tool results into one user instruction.`);
+            }
+        }
+
+        // If tools exist and it's NOT a tool continuation, inject the strong tools prompt
+        if (tools && tools.length > 0 && !messages.some(m => m.content && m.content.includes('Available functions:'))) {
+            const toolsSchema = JSON.stringify(tools.map(t => ({
+                name: t.function.name,
+                description: t.function.description || "",
+                parameters: t.function.parameters || {}
+            })), null, 2);
+
+            const toolsPrompt = `\n\n[System] You have access to these functions. Use them when needed to accomplish the user's request:\n\nAvailable functions:\n${toolsSchema}\n\nWhen you need to call a function, output ONLY this format:\n\n\`\`\`tool_call\n{"name": "function_name", "arguments": {"param": "value"}}\n\`\`\`\n\nWhen you receive tool results, analyze them and continue the task. User request: `;
+
+            const firstSystem = messages.find(m => m.role.toLowerCase() === 'system');
+            if (firstSystem) {
+                firstSystem.content += toolsPrompt;
+            } else {
+                messages.unshift({ role: 'system', content: toolsPrompt });
+            }
+            console.log(`Injected strong tool instructions for ${tools.length} tools.`);
+        }
+
         const emitter = new EventEmitter();
         let page = browserInstance.page;
         // Initialize session-related mode properties
@@ -777,35 +1038,33 @@ class YouProvider {
         }
 
         await sleep(2000);
+        page.setDefaultNavigationTimeout(60000);
+        page.setDefaultTimeout(60000);
+        let pageLoaded = false;
         try {
             if (page.isClosed()) {
                 console.warn(`[${username}] Page closed, re-creating...`);
             }
-            await page.goto("https://you.com", { waitUntil: 'domcontentloaded' });
+            console.log(`[${username}] Navigating to you.com...`);
+            await page.goto("https://you.com", { waitUntil: 'domcontentloaded', timeout: 60000 });
+            pageLoaded = true;
         } catch (err) {
-            if (/detached frame/i.test(err.message)) {
-                console.warn(`[${username}] Page Frame detached detected.`);
-                try {
-                    console.warn(`[${username}] Retrying "https://you.com"...`);
-                    if (!page.isClosed()) {
-                        await page.goto("https://you.com", { waitUntil: 'domcontentloaded' });
-                    } else {
-                        console.error(`[${username}] Page was completely closed.`);
-                    }
-                } catch (retryErr) {
-                    console.error(`[${username}] Retrying page.goto failed:`, retryErr);
-                    throw retryErr;
+            console.warn(`[${username}] Primary goto failed: ${err.message}. Retrying...`);
+            try {
+                if (!page.isClosed()) {
+                    await page.goto("https://you.com", { waitUntil: 'domcontentloaded', timeout: 60000 });
+                    pageLoaded = true;
                 }
-            } else {
-                throw err;
+            } catch (retryErr) {
+                console.error(`[${username}] All goto attempts failed:`, retryErr.message);
             }
+        }
+
+        if (!pageLoaded) {
+            console.warn(`[${username}] Proceeding without a confirmed page load. API calls might fail.`);
         }
         await sleep(1000);
 
-        // Print complete messages structure
-        // console.log(messages);
-
-        // Check
         if (this.isRotationEnabled) {
             this.checkAndSwitchMode(session);
             if (!Object.values(session.modeStatus).some(status => status)) {
@@ -815,7 +1074,7 @@ class YouProvider {
                 console.warn(`Account ${username} has reached the request limit for both modes, resetting recorded status.`);
             }
         }
-        // Handle mode rotation logic
+
         if (!modeSwitched && this.isCustomModeEnabled && this.isRotationEnabled && session.rotationEnabled) {
             session.switchCounter++;
             session.requestsInCurrentMode++;
@@ -824,7 +1083,6 @@ class YouProvider {
                 this.switchMode(session);
             }
         } else {
-            // Check if messages contains -modeid:1 or -modeid:2
             let modeId = null;
             for (const msg of messages) {
                 const match = msg.content.match(/-modeid:(\d+)/);
@@ -842,8 +1100,105 @@ class YouProvider {
             }
             console.log(`Current mode: ${session.currentMode}`);
         }
-        // Decide whether to use custom mode based on rotation status
+
         const effectiveUseCustomMode = this.isRotationEnabled ? (session.currentMode === "custom") : useCustomMode;
+        let { instructions, name, chatContext } = this.getAssistantProfile(messages, tools);
+
+        let userChatModeId = "custom";
+        if (effectiveUseCustomMode) {
+            if (!this.config.user_chat_mode_id) this.config.user_chat_mode_id = {};
+            if (!this.config.user_chat_mode_id[username]) this.config.user_chat_mode_id[username] = {};
+            if (!this.config.user_chat_mode_instructions_hash) this.config.user_chat_mode_instructions_hash = {};
+            if (!this.config.user_chat_mode_instructions_hash[username]) this.config.user_chat_mode_instructions_hash[username] = {};
+
+            const instructionsHash = crypto.createHash('md5').update(instructions).digest('hex');
+            const existingModeId = this.config.user_chat_mode_id[username][proxyModel];
+            const existingHash = this.config.user_chat_mode_instructions_hash[username][proxyModel];
+
+            if (!existingModeId || existingHash !== instructionsHash) {
+                const method = existingModeId ? "PUT" : "POST";
+                const url = "https://you.com/api/custom_assistants/assistants";
+
+                if (!pageLoaded) {
+                    console.error("[SESSION] Cannot update assistant: page failed to load.");
+                    userChatModeId = existingModeId || "custom";
+                } else {
+                    console.log(`[SESSION] ${existingModeId ? 'Updating' : 'Creating'} assistant for ${username} (${proxyModel})...`);
+                    console.log(`[SESSION] Method: ${method}, URL: ${url}`);
+                    console.log(`[SESSION] Instructions Length: ${instructions.length}`);
+
+                    let userChatMode = await page.evaluate(
+                        async (proxyModel, name, instructions, method, url, existingModeId) => {
+                            try {
+                                const bodyData = {
+                                    aiModel: proxyModel,
+                                    name: name,
+                                    instructions: instructions,
+                                    instructionsSummary: name,
+                                    hasLiveWebAccess: true,
+                                    hasPersonalization: false,
+                                    isUserOwned: true,
+                                    hideInstructions: true,
+                                    includeFollowUps: false,
+                                    visibility: "private",
+                                    advancedReasoningMode: "on",
+                                };
+                                if (method === "PUT" && existingModeId) {
+                                    bodyData.id = existingModeId;
+                                }
+
+                                console.log(`[BROWSER] Sending ${method} request to ${url}`);
+                                if (bodyData.id) console.log(`[BROWSER] Assistant ID: ${bodyData.id}`);
+
+                                const res = await fetch(url, {
+                                    method: method,
+                                    body: JSON.stringify(bodyData),
+                                    headers: { "Content-Type": "application/json" },
+                                });
+
+                                if (!res.ok) {
+                                    const text = await res.text();
+                                    return { error: `HTTP ${res.status}: ${text.substring(0, 100)}` };
+                                }
+
+                                const contentType = res.headers.get("content-type");
+                                if (contentType && contentType.includes("application/json")) {
+                                    return await res.json();
+                                } else {
+                                    const text = await res.text();
+                                    return { error: `Invalid content-type: ${contentType}`, body: text.substring(0, 100) };
+                                }
+                            } catch (e) {
+                                return { error: e.message };
+                            }
+                        },
+                        proxyModel, name, instructions, method, url, existingModeId
+                    );
+
+                    if (userChatMode && !userChatMode.error) {
+                        const modeId = userChatMode.chat_mode_id || existingModeId;
+                        this.config.user_chat_mode_id[username][proxyModel] = modeId;
+                        this.config.user_chat_mode_instructions_hash[username][proxyModel] = instructionsHash;
+                        fs.writeFileSync("./config.mjs", "export const config = " + JSON.stringify(this.config, null, 4));
+                        console.log(`Successfully ${method === "POST" ? "created" : "updated"} custom assistant ${modeId}`);
+                        userChatModeId = modeId;
+                    } else {
+                        console.error(`[SESSION] Failed to ${method === "POST" ? "create" : "update"} assistant:`, userChatMode?.error || "Unknown error");
+                        if (userChatMode?.body) console.error(`[SESSION] Error body snippet: ${userChatMode.body}`);
+                        userChatModeId = existingModeId || "custom";
+                    }
+                }
+            } else {
+                userChatModeId = existingModeId;
+            }
+
+            const systemIndex = messages.findIndex(m => m.role.toLowerCase() === 'system');
+            if (systemIndex !== -1 && chatContext) {
+                messages[systemIndex].content = chatContext;
+            }
+        } else {
+            console.log("Custom mode is disabled, using default mode.");
+        }
 
         // Check if page has finished loading
         const isLoaded = await page.evaluate(() => {
@@ -899,62 +1254,6 @@ class YouProvider {
                 ...msg,
                 content: msg.content.replace(/<\|TRUE ROLE\|>/g, '')
             }));
-        }
-
-        // Check if this session has created the corresponding user chat mode for the model
-        let userChatModeId = "custom";
-        if (effectiveUseCustomMode) {
-            if (!this.config.user_chat_mode_id) {
-                this.config.user_chat_mode_id = {};
-            }
-            // Check record matching current username
-            if (!this.config.user_chat_mode_id[username]) {
-                // Create new record for current user
-                this.config.user_chat_mode_id[username] = {};
-                fs.writeFileSync("./config.mjs", "export const config = " + JSON.stringify(this.config, null, 4));
-                console.log(`Created new record for user: ${username}`);
-            }
-
-            // Check if corresponding model record exists
-            if (!this.config.user_chat_mode_id[username][proxyModel]) {
-                // Create new user chat mode
-                let userChatMode = await page.evaluate(
-                    async (proxyModel, proxyModelName) => {
-                        return fetch("https://you.com/api/custom_assistants/assistants", {
-                            method: "POST",
-                            body: JSON.stringify({
-                                aiModel: proxyModel,
-                                name: proxyModelName,
-                                instructions: "Your custom instructions here", // Custom instructions
-                                instructionsSummary: "", // Add summary
-                                hasLiveWebAccess: false, // Whether to enable web access
-                                hasPersonalization: false, // Whether to enable personalization
-                                hideInstructions: false, // Whether to hide instructions on the interface
-                                includeFollowUps: false, // Whether to include follow-up questions
-                                visibility: "private", // Visibility, private or public
-                                advancedReasoningMode: "off", // "auto" or "off", whether to enable workflow
-                            }),
-                            headers: {
-                                "Content-Type": "application/json",
-                            },
-                        }).then((res) => res.json());
-                    },
-                    proxyModel,
-                    uuidV4().substring(0, 4)
-                );
-                if (userChatMode.chat_mode_id) {
-                    this.config.user_chat_mode_id[username][proxyModel] = userChatMode.chat_mode_id;
-                    // Write back to config
-                    fs.writeFileSync("./config.mjs", "export const config = " + JSON.stringify(this.config, null, 4));
-                    console.log(`Created new chat mode for user ${username} and model ${proxyModel}`);
-                } else {
-                    if (userChatMode.error) console.log(userChatMode.error);
-                    console.log("Failed to create user chat mode, will use default mode instead.");
-                }
-            }
-            userChatModeId = this.config.user_chat_mode_id[username][proxyModel];
-        } else {
-            console.log("Custom mode is disabled, using default mode.");
         }
 
         // Generate random length (6-16) file name
@@ -1574,7 +1873,19 @@ class YouProvider {
                         console.log("Request ended");
                         isEnding = true;
                         await cleanup(); // Cleanup
-                        emitter.emit(stream ? "end" : "completion", traceId, stream ? undefined : finalResponse);
+
+                        const { tool_calls, text } = self.parseToolCalls(accumulatedResponse);
+
+                        if (tool_calls) {
+                            console.log(`Extracted ${tool_calls.length} tool calls from response.`);
+                            // For streaming, we emit the tool_calls at the end
+                            if (stream) {
+                                emitter.emit("completion", traceId, { tool_calls });
+                            }
+                        }
+
+                        emitter.emit(stream ? "end" : "completion", traceId, stream ? undefined : (tool_calls ? { tool_calls, content: text } : text));
+
                         self.logger.logRequest({
                             email: username,
                             time: requestTime,
@@ -1698,7 +2009,18 @@ class YouProvider {
             }
         }
 
+        const releaseResources = async () => {
+            if (isInternalSessionManagement && browserInstance) {
+                await this.sessionManager.releaseSession(username, browserInstance.id).catch(console.error);
+                isInternalSessionManagement = false; // Prevent multiple releases
+            }
+        };
+
+        emitter.once("end", releaseResources);
+        emitter.once("error", releaseResources);
+
         const cancel = async () => {
+            await releaseResources();
             await page?.evaluate((traceId) => {
                 if (window["exit" + traceId]) {
                     window["exit" + traceId]();
