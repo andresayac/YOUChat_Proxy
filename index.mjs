@@ -1,47 +1,105 @@
 import express from "express";
-import {createEvent, getGitRevision} from "./utils.mjs";
+import { createEvent, getGitRevision } from "./utils.mjs";
 import YouProvider from "./provider.mjs";
 import localtunnel from "localtunnel";
 import ngrok from 'ngrok';
-import {v4 as uuidv4} from "uuid";
+import { v4 as uuidv4 } from "uuid";
 import './proxyAgent.mjs';
 
 const app = express();
 const port = process.env.PORT || 8080;
 const validApiKey = process.env.PASSWORD;
 const availableModels = [
-    "openai_o1",
-    "gpt_4o",
-    "gpt_4_turbo",
-    "gpt_4",
-    "claude_3_5_sonnet",
-    "claude_3_opus",
-    "claude_3_sonnet",
-    "claude_3_haiku",
-    "claude_2",
-    "llama3",
-    "gemini_pro",
-    "gemini_1_5_pro",
-    "gemini_1_5_flash",
-    "databricks_dbrx_instruct",
-    "command_r",
-    "command_r_plus",
-    "zephyr",
+    "gpt_5_2_thinking",
+    "gpt_5_2_instant",
+    "gpt_5_1_thinking",
+    "gpt_5_1_instant",
+    "gpt_5",
+    "gpt_5_mini",
+    "gpt_4_1",
+    "gpt_4_1_mini",
+    "openai_gpt_oss_120b",
+    "claude_4_6_opus_thinking",
+    "claude_4_6_opus",
+    "claude_4_5_opus_thinking",
+    "claude_4_5_opus",
+    "claude_4_1_opus_thinking",
+    "claude_4_1_opus",
+    "claude_4_5_sonnet_thinking",
+    "claude_4_5_sonnet",
+    "claude_4_sonnet_thinking",
+    "claude_4_sonnet",
+    "claude_4_5_haiku",
+    "gemini_3_pro",
+    "gemini_3_flash",
+    "gemini_2_5_pro_preview",
+    "gemini_2_5_flash_preview",
+    "grok_4_1_fast_reasoning",
+    "grok_4_1_fast",
+    "grok_4",
+    "qwen3_235b",
+    "deepseek_r1",
+    "deepseek_v3",
+    "llama4_maverick",
+    "llama4_scout",
+    "mistral_large_2",
+    "custom_assistants"
 ];
 const modelMappping = {
-    "claude-3-5-sonnet-latest": "claude_3_5_sonnet",
-    "claude-3-5-sonnet-20241022": "claude_3_5_sonnet",
-    "claude-3-5-sonnet-20240620": "claude_3_5_sonnet",
-    "claude-3-20240229": "claude_3_opus",
-    "claude-3-opus-20240229": "claude_3_opus",
-    "claude-3-sonnet-20240229": "claude_3_sonnet",
-    "claude-3-haiku-20240307": "claude_3_haiku",
-    "claude-2.1": "claude_2",
-    "claude-2.0": "claude_2",
-    "gpt-4": "gpt_4",
-    "gpt-4o": "gpt_4o",
-    "gpt-4-turbo": "gpt_4_turbo",
-    "openai-o1": "openai_o1",
+    // OpenAI
+    "gpt-5.2-thinking": "gpt_5_2_thinking",
+    "gpt-5.2-instant": "gpt_5_2_instant",
+    "gpt-5.1-thinking": "gpt_5_1_thinking",
+    "gpt-5.1-instant": "gpt_5_1_instant",
+    "gpt-5": "gpt_5",
+    "gpt-5-mini": "gpt_5_mini",
+    "gpt-4.1": "gpt_4_1",
+    "gpt-4.1-mini": "gpt_4_1_mini",
+    "gpt-oss-120b": "openai_gpt_oss_120b",
+
+    // Anthropic
+    "claude-4.6-opus-thinking": "claude_4_6_opus_thinking",
+    "claude-4.6-opus": "claude_4_6_opus",
+    "claude-4.5-opus-thinking": "claude_4_5_opus_thinking",
+    "claude-4.5-opus": "claude_4_5_opus",
+    "claude-4.1-opus-thinking": "claude_4_1_opus_thinking",
+    "claude-4.1-opus": "claude_4_1_opus",
+    "claude-4.5-sonnet-thinking": "claude_4_5_sonnet_thinking",
+    "claude-4.5-sonnet": "claude_4_5_sonnet",
+    "claude-4-sonnet-thinking": "claude_4_sonnet_thinking",
+    "claude-4-sonnet": "claude_4_sonnet",
+    "claude-4.5-haiku": "claude_4_5_haiku",
+
+    // Google
+    "gemini-3-pro": "gemini_3_pro",
+    "gemini-3-flash": "gemini_3_flash",
+    "gemini-2.5-pro-preview": "gemini_2_5_pro_preview",
+    "gemini-2.5-flash-preview": "gemini_2_5_flash_preview",
+    "gemini-2.5-flash": "gemini_2_5_flash_preview",
+
+    // xAI
+    "grok-4.1-fast-reasoning": "grok_4_1_fast_reasoning",
+    "grok-4.1-fast": "grok_4_1_fast",
+    "grok-4": "grok_4",
+
+    // Alibaba
+    "qwen3-235b": "qwen3_235b",
+
+    // DeepSeek
+    "deepseek-r1": "deepseek_r1",
+    "deepseek-v3": "deepseek_v3",
+    "deepseek-chat": "deepseek_v3",
+    "deepseek-reasoner": "deepseek_r1",
+
+    // Meta
+    "llama-4-maverick": "llama4_maverick",
+    "llama-4-scout": "llama4_scout",
+
+    // Mistral
+    "mistral-large-2": "mistral_large_2",
+
+    // Custom Assistants
+    "custom-assistants": "custom_assistants"
 };
 
 // import config.mjs
@@ -84,7 +142,7 @@ app.get("/v1/models", OpenAIApiKeyAuth, (req, res) => {
             name: model,
         };
     });
-    res.json({object: "list", data: models});
+    res.json({ object: "list", data: models });
 });
 // handle openai format model request
 app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
@@ -118,10 +176,14 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
         // 检查是否有可用的会话
         if (!sessions || Object.keys(sessions).length === 0) {
             console.error('没有可用的会话，请检查 Provider 的初始化是否成功，或检查配置文件。');
-            res.write(JSON.stringify({
-                error: 'No available sessions.',
-            }));
-            res.end();
+            res.status(503).json({
+                error: {
+                    message: "No available sessions.",
+                    type: "server_error",
+                    param: null,
+                    code: "service_unavailable"
+                }
+            });
             return;
         }
 
@@ -134,36 +196,44 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
             jsonBody.model = modelMappping[jsonBody.model];
         }
         if (jsonBody.model && !availableModels.includes(jsonBody.model)) {
-            res.json({error: {code: 404, message: "Invalid Model"}});
+            res.status(404).json({
+                error: {
+                    message: `The model '${jsonBody.model}' does not exist`,
+                    type: "invalid_request_error",
+                    param: null,
+                    code: "model_not_found"
+                }
+            });
             return;
         }
         console.log("Using model " + jsonBody.model);
 
         // 调用 provider 获取回复
         try {
-            const {completion, cancel} = await provider.getCompletion({
+            const { completion, cancel } = await provider.getCompletion({
                 username: randomSession,
                 messages: jsonBody.messages,
                 stream: !!jsonBody.stream,
                 proxyModel: jsonBody.model,
-                useCustomMode: process.env.USE_CUSTOM_MODE === "true"
+                useCustomMode: process.env.USE_CUSTOM_MODE === "true",
+                tools: jsonBody.tools,
+                tool_choice: jsonBody.tool_choice
             });
 
             // 监听开始事件
             completion.on("start", (id) => {
                 if (jsonBody.stream) {
-                    // 发送消息开始
-                    res.write(createEvent(":", "queue heartbeat 114514"));
+                    // Send message start
                     res.write(
                         createEvent("data", {
-                            id: id,
+                            id: `chatcmpl-${id}`,
                             object: "chat.completion.chunk",
                             created: Math.floor(new Date().getTime() / 1000),
                             model: jsonBody.model,
-                            system_fingerprint: "114514",
+                            system_fingerprint: "fp_you_proxy",
                             choices: [{
                                 index: 0,
-                                delta: {role: "assistant", content: ""},
+                                delta: { role: "assistant", content: "" },
                                 logprobs: null,
                                 finish_reason: null
                             }],
@@ -173,55 +243,67 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
             });
 
             // 监听完成事件
-            completion.on("completion", (id, text) => {
+            completion.on("completion", (id, data) => {
                 if (jsonBody.stream) {
-                    // 发送消息增量
+                    let delta = {};
+                    if (typeof data === 'string') {
+                        delta = { content: data };
+                    } else if (data.tool_calls) {
+                        delta = { tool_calls: data.tool_calls };
+                    } else if (data.content) {
+                        delta = { content: data.content };
+                    }
+
+                    // Send message delta
                     res.write(
                         createEvent("data", {
+                            id: `chatcmpl-${id}`,
+                            object: "chat.completion.chunk",
+                            created: Math.floor(new Date().getTime() / 1000),
+                            model: jsonBody.model,
+                            system_fingerprint: "fp_you_proxy",
                             choices: [
                                 {
-                                    content_filter_results: {
-                                        hate: {filtered: false, severity: "safe"},
-                                        self_harm: {filtered: false, severity: "safe"},
-                                        sexual: {filtered: false, severity: "safe"},
-                                        violence: {filtered: false, severity: "safe"},
-                                    },
-                                    delta: {content: text},
-                                    finish_reason: null,
                                     index: 0,
+                                    delta: delta,
+                                    logprobs: null,
+                                    finish_reason: null,
                                 },
                             ],
-                            created: Math.floor(new Date().getTime() / 1000),
-                            id: id,
-                            model: jsonBody.model,
-                            object: "chat.completion.chunk",
-                            system_fingerprint: "114514",
                         })
                     );
                 } else {
-                    // 只发送一次，发送最终响应
+                    // Send final response (non-stream)
+                    let message = { role: "assistant" };
+                    if (typeof data === 'string') {
+                        message.content = data;
+                    } else if (data.tool_calls) {
+                        message.tool_calls = data.tool_calls;
+                        message.content = null;
+                    } else {
+                        message.content = data.content || null;
+                        if (data.tool_calls) message.tool_calls = data.tool_calls;
+                    }
+
                     res.write(
                         JSON.stringify({
-                            id: id,
+                            id: `chatcmpl-${id}`,
                             object: "chat.completion",
                             created: Math.floor(new Date().getTime() / 1000),
                             model: jsonBody.model,
-                            system_fingerprint: "114514",
+                            system_fingerprint: "fp_you_proxy",
                             choices: [
                                 {
                                     index: 0,
-                                    message: {
-                                        role: "assistant",
-                                        content: text,
-                                    },
+                                    message: message,
                                     logprobs: null,
                                     finish_reason: "stop",
                                 },
                             ],
                             usage: {
-                                prompt_tokens: 1,
-                                completion_tokens: 1,
-                                total_tokens: 1,
+                                prompt_tokens: 0,
+                                completion_tokens: 0,
+                                total_tokens: 0,
                             },
                         })
                     );
@@ -232,8 +314,68 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
             // 监听结束事件
             completion.on("end", () => {
                 if (jsonBody.stream) {
-                    res.write(createEvent("data", "[DONE]"));
-                    res.end();
+                    // Send usage chunk before [DONE]
+                    try {
+                        res.write(
+                            createEvent("data", {
+                                id: `chatcmpl-${uuidv4()}`,
+                                object: "chat.completion.chunk",
+                                created: Math.floor(new Date().getTime() / 1000),
+                                model: jsonBody.model,
+                                system_fingerprint: "fp_you_proxy",
+                                choices: [],
+                                usage: {
+                                    prompt_tokens: 0,
+                                    completion_tokens: 0,
+                                    total_tokens: 0,
+                                },
+                            })
+                        );
+                        res.write(createEvent("data", "[DONE]"));
+                        res.end();
+                    } catch (e) {
+                        console.error("Error ending stream:", e);
+                    }
+                }
+            });
+
+            // 监听错误事件
+            completion.on("error", (err) => {
+                console.error("Provider stream error:", err);
+                const errorMessage = "Stream Error: " + (err.message || "Unknown error");
+                if (jsonBody.stream) {
+                    // Try to send error as a message chunk if stream is still open
+                    try {
+                        res.write(
+                            createEvent("data", {
+                                id: `chatcmpl-${uuidv4()}`,
+                                object: "chat.completion.chunk",
+                                created: Math.floor(new Date().getTime() / 1000),
+                                model: jsonBody.model,
+                                system_fingerprint: "fp_you_proxy",
+                                choices: [{
+                                    index: 0,
+                                    delta: { content: "\n\n[Error: " + errorMessage + "]" },
+                                    finish_reason: "stop"
+                                }]
+                            })
+                        );
+                        res.write(createEvent("data", "[DONE]"));
+                        res.end();
+                    } catch (e) {
+                        // Stream might be closed already
+                    }
+                } else {
+                    if (!res.headersSent) {
+                        res.status(500).json({
+                            error: {
+                                message: errorMessage,
+                                type: "server_error",
+                                param: null,
+                                code: "internal_error"
+                            }
+                        });
+                    }
                 }
             });
 
@@ -252,12 +394,12 @@ app.post("/v1/chat/completions", OpenAIApiKeyAuth, (req, res) => {
                         choices: [
                             {
                                 content_filter_results: {
-                                    hate: {filtered: false, severity: "safe"},
-                                    self_harm: {filtered: false, severity: "safe"},
-                                    sexual: {filtered: false, severity: "safe"},
-                                    violence: {filtered: false, severity: "safe"},
+                                    hate: { filtered: false, severity: "safe" },
+                                    self_harm: { filtered: false, severity: "safe" },
+                                    sexual: { filtered: false, severity: "safe" },
+                                    violence: { filtered: false, severity: "safe" },
                                 },
-                                delta: {content: errorMessage},
+                                delta: { content: errorMessage },
                                 finish_reason: null,
                                 index: 0,
                             },
@@ -315,7 +457,7 @@ function openaiNormalizeMessages(messages) {
             }
         } else {
             if (currentSystemMessage) {
-                normalizedMessages.push({role: 'system', content: currentSystemMessage});
+                normalizedMessages.push({ role: 'system', content: currentSystemMessage });
                 currentSystemMessage = "";
             }
             normalizedMessages.push(message);
@@ -323,7 +465,7 @@ function openaiNormalizeMessages(messages) {
     }
 
     if (currentSystemMessage) {
-        normalizedMessages.push({role: 'system', content: currentSystemMessage});
+        normalizedMessages.push({ role: 'system', content: currentSystemMessage });
     }
 
     return normalizedMessages;
@@ -387,7 +529,7 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
 
         // call provider to get completion
         try {
-            const {completion, cancel} = await provider.getCompletion({
+            const { completion, cancel } = await provider.getCompletion({
                 username: randomSession,
                 messages: jsonBody.messages,
                 stream: !!jsonBody.stream,
@@ -408,15 +550,15 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
                             model: proxyModel,
                             stop_reason: null,
                             stop_sequence: null,
-                            usage: {input_tokens: 8, output_tokens: 1},
+                            usage: { input_tokens: 8, output_tokens: 1 },
                         },
                     }));
                     res.write(createEvent("content_block_start", {
                         type: "content_block_start",
                         index: 0,
-                        content_block: {type: "text", text: ""}
+                        content_block: { type: "text", text: "" }
                     }));
-                    res.write(createEvent("ping", {type: "ping"}));
+                    res.write(createEvent("ping", { type: "ping" }));
                 }
             });
 
@@ -426,20 +568,20 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
                     res.write(createEvent("content_block_delta", {
                         type: "content_block_delta",
                         index: 0,
-                        delta: {type: "text_delta", text: text},
+                        delta: { type: "text_delta", text: text },
                     }));
                 } else {
                     // 只会发一次，发送final response
                     res.write(JSON.stringify({
                         id: id,
                         content: [
-                            {text: text},
-                            {id: "string", name: "string", input: {}},
+                            { text: text },
+                            { id: "string", name: "string", input: {} },
                         ],
                         model: proxyModel,
                         stop_reason: "end_turn",
                         stop_sequence: null,
-                        usage: {input_tokens: 0, output_tokens: 0},
+                        usage: { input_tokens: 0, output_tokens: 0 },
                     }));
                     res.end();
                 }
@@ -447,13 +589,13 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
 
             completion.on("end", () => {
                 if (jsonBody.stream) {
-                    res.write(createEvent("content_block_stop", {type: "content_block_stop", index: 0}));
+                    res.write(createEvent("content_block_stop", { type: "content_block_stop", index: 0 }));
                     res.write(createEvent("message_delta", {
                         type: "message_delta",
-                        delta: {stop_reason: "end_turn", stop_sequence: null},
-                        usage: {output_tokens: 12},
+                        delta: { stop_reason: "end_turn", stop_sequence: null },
+                        usage: { output_tokens: 12 },
                     }));
-                    res.write(createEvent("message_stop", {type: "message_stop"}));
+                    res.write(createEvent("message_stop", { type: "message_stop" }));
                     res.end();
                 }
             });
@@ -471,16 +613,16 @@ app.post("/v1/messages", AnthropicApiKeyAuth, (req, res) => {
                 res.write(createEvent("content_block_delta", {
                     type: "content_block_delta",
                     index: 0,
-                    delta: {type: "text_delta", text: errorMessage},
+                    delta: { type: "text_delta", text: errorMessage },
                 }));
             } else {
                 res.write(JSON.stringify({
                     id: uuidv4(),
-                    content: [{text: errorMessage}, {id: "string", name: "string", input: {}}],
+                    content: [{ text: errorMessage }, { id: "string", name: "string", input: {} }],
                     model: proxyModel,
                     stop_reason: "error",
                     stop_sequence: null,
-                    usage: {input_tokens: 0, output_tokens: 0},
+                    usage: { input_tokens: 0, output_tokens: 0 },
                 }));
             }
             res.end();
@@ -499,7 +641,7 @@ function anthropicNormalizeMessages(messages) {
                 .filter(item => item.type === 'text')
                 .map(item => item.text)
                 .join('\n');
-            return {...message, content: textContent};
+            return { ...message, content: textContent };
         } else {
             // 未知格式，返回原始消息
             console.warn('未知的消息格式:', message);
@@ -511,13 +653,13 @@ function anthropicNormalizeMessages(messages) {
 
 // handle other
 app.use((req, res, next) => {
-    const {revision, branch} = getGitRevision();
+    const { revision, branch } = getGitRevision();
     res.status(404).send("Not Found (YouChat_Proxy " + revision + "@" + branch + ")");
     console.log("收到了错误路径的请求，请检查您使用的API端点是否正确。")
 });
 
 const createLocaltunnel = async (port, subdomain) => {
-    const tunnelOptions = {port};
+    const tunnelOptions = { port };
     if (subdomain) {
         tunnelOptions.subdomain = subdomain;
     }
@@ -533,7 +675,7 @@ const createLocaltunnel = async (port, subdomain) => {
 };
 
 const createNgrok = async (port, authToken, customDomain, subdomain) => {
-    const ngrokOptions = {addr: port, authtoken: authToken};
+    const ngrokOptions = { addr: port, authtoken: authToken };
 
     if (customDomain) {
         ngrokOptions.hostname = customDomain;
@@ -592,7 +734,7 @@ function AnthropicApiKeyAuth(req, res, next) {
         // If Environment variable PASSWORD is set AND x-api-key header is not equal to it, return 401
         const clientIpAddress = req.headers["x-forwarded-for"] || req.ip;
         console.log(`Receviced Request from IP ${clientIpAddress} but got invalid password.`);
-        return res.status(401).json({error: "Invalid Password"});
+        return res.status(401).json({ error: "Invalid Password" });
     }
 
     next();
@@ -605,7 +747,7 @@ function OpenAIApiKeyAuth(req, res, next) {
         // If Environment variable PASSWORD is set AND Authorization header is not equal to it, return 401
         const clientIpAddress = req.headers["x-forwarded-for"] || req.ip;
         console.log(`Receviced Request from IP ${clientIpAddress} but got invalid password.`);
-        return res.status(401).json({error: {code: 403, message: "Invalid Password"}});
+        return res.status(401).json({ error: { code: 403, message: "Invalid Password" } });
     }
 
     next();

@@ -22,9 +22,9 @@ class PerplexityProvider {
 
     async init(config) {
         console.log(`本项目依赖Chrome或Edge浏览器，请勿关闭弹出的浏览器窗口。如果出现错误请检查是否已安装Chrome或Edge浏览器。`);
-        
+
         const browserPath = detectBrowser(this.preferredBrowser); // 检测Chrome和Edge浏览器
-        
+
         this.sessions = {};
         const timeout = 120000;
 
@@ -71,10 +71,10 @@ class PerplexityProvider {
                     },
                 });
 
-                const {page, browser} = response;
+                const { page, browser } = response;
                 if (process.env.USE_MANUAL_LOGIN === "true") {
                     console.log(`正在为 session #${session.configIndex} 进行手动登录...`);
-                    await page.goto("https://www.perplexity.ai", {timeout: timeout});
+                    await page.goto("https://www.perplexity.ai", { timeout: timeout });
                     await sleep(3000);
                     console.log(`请在打开的浏览器窗口中手动登录 Perplexity.ai (session #${session.configIndex})`);
                     const { sessionCookie, accountStatus } = await this.waitForManualLogin(page);
@@ -100,7 +100,7 @@ class PerplexityProvider {
                     // 使用已有的 cookie
                     const perplexityCookies = getPerplexitySessionCookie(session);
                     await page.setCookie(...perplexityCookies);
-                    await page.goto("https://www.perplexity.ai", {timeout: timeout});
+                    await page.goto("https://www.perplexity.ai", { timeout: timeout });
                     await sleep(5000);
                 }
 

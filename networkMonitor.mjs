@@ -21,17 +21,17 @@ class NetworkMonitor extends EventEmitter {
     }
 
     async startMonitoring() {
-        console.log("开始网络监控...");
+        console.log("Starting network monitoring...");
         this.checkInterval = setInterval(async () => {
             const isConnected = await this.checkConnection();
             if (!isConnected && !this.isBlocked) {
                 this.isBlocked = true;
                 this.emit('networkDown');
-                console.log("检测到网络异常");
+                console.log("Network anomaly detected");
             } else if (isConnected && this.isBlocked) {
                 this.isBlocked = false;
                 this.emit('networkUp');
-                console.log("网络恢复正常");
+                console.log("Network recovered");
             }
         }, 5000);
     }
