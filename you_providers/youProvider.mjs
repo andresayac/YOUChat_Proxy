@@ -894,7 +894,7 @@ class YouProvider {
         }
 
         if (containsTrueRole) {
-            // 将 <|TRUE ROLE|> 从 messages 中移除
+            // Remove <|TRUE ROLE|> from messages
             messages = messages.map(msg => ({
                 ...msg,
                 content: msg.content.replace(/<\|TRUE ROLE\|>/g, '')
@@ -1241,7 +1241,7 @@ class YouProvider {
             await page.goto(`https://you.com/search?q=&fromSearchBar=true&tbm=youchat&chatMode=${userChatModeId}&cid=c0_${traceId}`, { waitUntil: 'domcontentloaded' });
         }
 
-        // 检查连接状态和盾拦截
+        // Check connection status and Shield (Cloudflare) interception
         async function checkConnectionAndCloudflare(page, timeout = 60000) {
             try {
                 const response = await Promise.race([
@@ -1473,7 +1473,7 @@ class YouProvider {
                         buffer += tokenContent;
 
                         if (buffer.endsWith('\\') && !buffer.endsWith('\\\\')) {
-                            // 等待下一个字符
+                            // Wait for the next character
                             break;
                         }
                         let processedContent = unescapeContent(buffer);

@@ -13,7 +13,7 @@ const CONFIG_FILE_PATH = path.join(__dirname, "../config.mjs");
 const ENABLE_AUTO_COOKIE_UPDATE = process.env.ENABLE_AUTO_COOKIE_UPDATE === "true";
 
 function unifyQuotesForJSON(str) {
-    // 正则匹配 `` `...` ``
+    // Regex match \`...\`
     let out = str.replace(/`([^`]*)`/g, (match, p1) => {
         const safe = p1.replace(/"/g, '\\"');
         return `"${safe}"`;
