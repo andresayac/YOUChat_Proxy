@@ -24,7 +24,7 @@ class YouProvider {
         this.sessions = {};
         this.isCustomModeEnabled = process.env.USE_CUSTOM_MODE === "true"; // Whether to enable custom mode
         this.isRotationEnabled = process.env.ENABLE_MODE_ROTATION === "true"; // Whether to enable mode rotation
-        this.uploadFileFormat = process.env.UPLOAD_FILE_FORMAT || 'docx'; // Upload file format
+        this.uploadFileFormat = process.env.UPLOAD_FILE_FORMAT || 'txt'; // Upload file format
         this.enableRequestLimit = process.env.ENABLE_REQUEST_LIMIT === 'true'; // Whether to enable request limit
         this.requestLimit = parseInt(process.env.REQUEST_LIMIT, 10) || 3; // Request limit upper bound
         this.networkMonitor = new NetworkMonitor();
