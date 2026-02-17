@@ -22,14 +22,14 @@ class YouProvider {
     constructor(config) {
         this.config = config;
         this.sessions = {};
-        this.isCustomModeEnabled = process.env.USE_CUSTOM_MODE === "true"; // 是否启用自定义模式
-        this.isRotationEnabled = process.env.ENABLE_MODE_ROTATION === "true"; // 是否启用模式轮换
-        this.uploadFileFormat = process.env.UPLOAD_FILE_FORMAT || 'docx'; // 上传文件格式
-        this.enableRequestLimit = process.env.ENABLE_REQUEST_LIMIT === 'true'; // 是否启用请求次数限制
-        this.requestLimit = parseInt(process.env.REQUEST_LIMIT, 10) || 3; // 请求次数上限
+        this.isCustomModeEnabled = process.env.USE_CUSTOM_MODE === "true"; // Whether to enable custom mode
+        this.isRotationEnabled = process.env.ENABLE_MODE_ROTATION === "true"; // Whether to enable mode rotation
+        this.uploadFileFormat = process.env.UPLOAD_FILE_FORMAT || 'docx'; // Upload file format
+        this.enableRequestLimit = process.env.ENABLE_REQUEST_LIMIT === 'true'; // Whether to enable request limit
+        this.requestLimit = parseInt(process.env.REQUEST_LIMIT, 10) || 3; // Request limit upper bound
         this.networkMonitor = new NetworkMonitor();
         this.logger = new Logger();
-        this.isSingleSession = false; // 是否为单账号模式
+        this.isSingleSession = false; // Whether it is single session mode
     }
 
     getRandomSwitchThreshold(session) {
@@ -45,7 +45,7 @@ class YouProvider {
                 range = maxThreshold - session.lastDefaultThreshold;
             }
 
-            // 范围至少 1
+            // Minimum range of 1
             const adjustedRange = range > 0 ? range : 1;
             return Math.floor(Math.random() * adjustedRange) + session.lastDefaultThreshold;
         }
@@ -59,29 +59,29 @@ class YouProvider {
         session.switchCounter = 0;
         session.requestsInCurrentMode = 0;
         session.switchThreshold = this.getRandomSwitchThreshold(session);
-        console.log(`切换到${session.currentMode}模式，将在${session.switchThreshold}次请求后再次切换`);
+        console.log(`Switched to ${session.currentMode} mode, will switch again after ${session.switchThreshold} requests`);
     }
 
     async init(config) {
-        console.log(`本项目依赖Chrome或Edge浏览器，请勿关闭弹出的浏览器窗口。如果出现错误请检查是否已安装Chrome或Edge浏览器。`);
+        console.log(`This project depends on Chrome or Edge browser, please do not close the popped browser window. If errors occur, check if Chrome or Edge is installed.`);
 
         const timeout = 120000;
         this.skipAccountValidation = (process.env.SKIP_ACCOUNT_VALIDATION === "true");
-        // 统计sessions数量
+        // Count the number of sessions
         let totalSessions = 0;
 
         this.sessionManager = new SessionManager(this);
         await this.sessionManager.initBrowserInstancesInBatch();
 
         if (process.env.USE_MANUAL_LOGIN === "true") {
-            console.log("当前使用手动登录模式，跳过config.mjs文件中的 cookie 验证");
-            // 获取一个浏览器实例
+            console.log("Current use manual login mode, skip cookie validation in config.mjs file");
+            // Get a browser instance
             const browserInstance = this.sessionManager.browserInstances[0];
             const page = browserInstance.page;
-            // 手动登录
-            console.log(`请在打开的浏览器窗口中手动登录 You.com`);
+            // Manual login
+            console.log(`Please login to You.com manually in the opened browser window`);
             await page.goto("https://you.com", { timeout: timeout });
-            await sleep(3000); // 等待页面加载完毕
+            await sleep(3000); // Wait for page to finish loading
 
             const { loginInfo, sessionCookie } = await this.waitForManualLogin(page);
             if (sessionCookie) {
@@ -98,18 +98,19 @@ class YouProvider {
                     youpro_subscription: "true",
                 };
                 delete this.sessions['manual_login'];
-                console.log(`成功获取 ${email} 登录的 cookie (${sessionCookie.isNewVersion ? '新版' : '旧版'})`);
+                delete this.sessions['manual_login'];
+                console.log(`Successfully acquired ${email} login cookie (${sessionCookie.isNewVersion ? 'New version' : 'Old version'})`);
                 totalSessions++;
-                // 设置隐身模式 cookie
+                // Set incognito mode cookie
                 await page.setCookie(...sessionCookie);
                 this.sessionManager.setSessions(this.sessions);
             } else {
-                console.error(`未能获取有效的登录 cookie`);
+                console.error(`Failed to get a valid login cookie`);
                 await browserInstance.browser.close();
             }
         } else {
-            // 使用配置文件中的 cookie
-            // 检查 invalid_accounts 字段
+            // Use cookie from configuration file
+            // Check invalid_accounts field
             const invalidAccounts = config.invalid_accounts || {};
 
             for (let index = 0; index < config.sessions.length; index++) {
@@ -123,13 +124,13 @@ class YouProvider {
                     youpro_subscription
                 } = extractCookie(session.cookie);
                 if (jwtSession && jwtToken) {
-                    // 旧版cookie处理
+                    // Old version cookie processing
                     try {
                         const jwt = JSON.parse(Buffer.from(jwtToken.split(".")[1], "base64").toString());
                         const username = jwt.user.name;
 
                         if (invalidAccounts[username]) {
-                            console.log(`跳过标记失效账号 #${index} ${username} (${invalidAccounts[username]})`);
+                            console.log(`Skipping account marked as invalid #${index} ${username} (${invalidAccounts[username]})`);
                             continue;
                         }
 
@@ -144,18 +145,18 @@ class YouProvider {
                             },
                             isTeamAccount: false,
                         };
-                        console.log(`已添加 #${index} ${username} (旧版cookie)`);
+                        console.log(`Added #${index} ${username} (Old version cookie)`);
                     } catch (e) {
-                        console.error(`解析第${index}个旧版cookie失败: ${e.message}`);
+                        console.error(`Failed to parse the ${index}th old version cookie: ${e.message}`);
                     }
                 } else if (ds) {
-                    // 新版cookie处理
+                    // New version cookie processing
                     try {
                         const jwt = JSON.parse(Buffer.from(ds.split(".")[1], "base64").toString());
                         const username = jwt.email;
 
                         if (invalidAccounts[username]) {
-                            console.log(`跳过标记失效账号 #${index} ${username} (${invalidAccounts[username]})`);
+                            console.log(`Skipping account marked as invalid #${index} ${username} (${invalidAccounts[username]})`);
                             continue;
                         }
 
@@ -172,63 +173,63 @@ class YouProvider {
                             },
                             isTeamAccount: false,
                         };
-                        console.log(`已添加 #${index} ${username} (新版cookie)`);
+                        console.log(`Added #${index} ${username} (New version cookie)`);
                         if (!dsr) {
-                            console.warn(`警告: 第${index}个cookie缺少DSR字段。`);
+                            console.warn(`Warning: The ${index}th cookie lacks the DSR field.`);
                         }
                     } catch (e) {
-                        console.error(`解析第${index}个新版cookie失败: ${e.message}`);
+                        console.error(`Failed to parse the ${index}th new version cookie: ${e.message}`);
                     }
                 } else {
-                    console.error(`第${index}个cookie无效，请重新获取。`);
-                    console.error(`未检测到有效的DS或stytch_session字段。`);
+                    console.error(`The ${index}th cookie is invalid, please re-acquire.`);
+                    console.error(`No valid DS or stytch_session field detected.`);
                 }
             }
             totalSessions = Object.keys(this.sessions).length;
-            console.log(`已添加 ${totalSessions} 个 cookie`);
+            console.log(`Added ${totalSessions} cookies`);
 
             this.sessionManager.setSessions(this.sessions);
         }
 
-        // 判断是否单账号模式
+        // Determine if single account mode
         this.isSingleSession = (totalSessions === 1) || (process.env.USE_MANUAL_LOGIN === "true");
-        console.log(`开启 ${this.isSingleSession ? "单账号模式" : "多账号模式"}`);
+        console.log(`Enabled ${this.isSingleSession ? "Single Account Mode" : "Multi-Account Mode"}`);
 
-        // 执行验证
+        // Execution validation
         if (!this.skipAccountValidation) {
-            console.log(`开始验证cookie有效性...`);
-            // 获取浏览器实例列表
+            console.log(`Starting to validate cookie validity...`);
+            // Get list of browser instances
             const browserInstances = this.sessionManager.browserInstances;
-            // 创建一个账号队列
+            // Create an account queue
             const accountQueue = [...Object.keys(this.sessions)];
-            // 并发验证账号
+            // Concurrent validation of accounts
             await this.validateAccounts(browserInstances, accountQueue);
-            console.log("订阅信息汇总：");
+            console.log("Subscription information summary:");
             for (const [username, session] of Object.entries(this.sessions)) {
                 if (session.valid) {
                     console.log(`{${username}:`);
                     if (session.subscriptionInfo) {
-                        console.log(`  订阅计划: ${session.subscriptionInfo.planName}`);
-                        console.log(`  到期日期: ${session.subscriptionInfo.expirationDate}`);
-                        console.log(`  剩余天数: ${session.subscriptionInfo.daysRemaining}天`);
+                        console.log(`  Subscription Plan: ${session.subscriptionInfo.planName}`);
+                        console.log(`  Expiration Date: ${session.subscriptionInfo.expirationDate}`);
+                        console.log(`  Days Remaining: ${session.subscriptionInfo.daysRemaining} days`);
                         if (session.isTeam) {
-                            console.log(`  租户ID: ${session.subscriptionInfo.tenantId}`);
-                            console.log(`  许可数量: ${session.subscriptionInfo.quantity}`);
-                            console.log(`  已使用许可: ${session.subscriptionInfo.usedQuantity}`);
-                            console.log(`  状态: ${session.subscriptionInfo.status}`);
-                            console.log(`  计费周期: ${session.subscriptionInfo.interval}`);
+                            console.log(`  Tenant ID: ${session.subscriptionInfo.tenantId}`);
+                            console.log(`  License Quantity: ${session.subscriptionInfo.quantity}`);
+                            console.log(`  Used Licenses: ${session.subscriptionInfo.usedQuantity}`);
+                            console.log(`  Status: ${session.subscriptionInfo.status}`);
+                            console.log(`  Billing Interval: ${session.subscriptionInfo.interval}`);
                         }
                         if (session.subscriptionInfo.cancelAtPeriodEnd) {
-                            console.log('  注意: 该订阅已设置为在当前周期结束后取消');
+                            console.log('  Note: This subscription is set to be cancelled after the current cycle ends');
                         }
                     } else {
-                        console.warn('  账户类型: 非Pro/非Team（功能受限）');
+                        console.warn('  Account type: Non-Pro/Non-Team (Limited function)');
                     }
                     console.log('}');
                 }
             }
         } else {
-            console.warn('\x1b[33m%s\x1b[0m', '警告: 已跳过账号验证。可能存在账号信息不正确或无效。');
+            console.warn('\x1b[33m%s\x1b[0m', 'Warning: Account validation skipped. Account information may be incorrect or invalid.');
             for (const username in this.sessions) {
                 this.sessions[username].valid = true;
                 if (!this.sessions[username].youpro_subscription) {
@@ -237,53 +238,53 @@ class YouProvider {
             }
         }
 
-        // 统计有效 cookie
+        // Count valid cookies
         const validSessionsCount = Object.keys(this.sessions).filter(u => this.sessions[u].valid).length;
-        console.log(`验证完毕，有效cookie数量 ${validSessionsCount}`);
-        // 开启网络监控
+        console.log(`Validation complete, number of valid cookies: ${validSessionsCount}`);
+        // Enable network monitoring
         await this.networkMonitor.startMonitoring();
     }
 
     async validateAccounts(browserInstances, accountQueue) {
-        const timeout = 120000; // 毫秒
+        const timeout = 120000; // milliseconds
 
-        // 自定义并发上限
+        // Custom concurrency upper bound
         const desiredConcurrencyLimit = 16;
 
-        // 实际浏览器实例数量
+        // Actual browser instance count
         const browserCount = browserInstances.length;
 
-        // 最终生效的并发总量 = min(浏览器实例数量, 自定义并发上限)
+        // Final effective concurrency = min(browser instance count, custom concurrency upper bound)
         const effectiveConcurrency = Math.min(browserCount, desiredConcurrencyLimit);
 
-        // 如果 Cookie 数量 < 浏览器实例数，则复制到至少 browserCount
+        // If Cookie count < browser instances, copy until at least browserCount
         if (accountQueue.length < browserCount) {
             const originalQueue = [...accountQueue];
             if (originalQueue.length === 0) {
-                console.warn("无法验证：accountQueue 为空，未提供任何 Cookie。");
+                console.warn("Unable to validate: accountQueue is empty, no Cookies provided.");
                 return;
             }
             while (accountQueue.length < browserCount) {
                 const randomIndex = Math.floor(Math.random() * originalQueue.length);
                 accountQueue.push(originalQueue[randomIndex]);
             }
-            console.log(`队列已扩充到至少与浏览器实例数相同：${accountQueue.length} 条`);
+            console.log(`Queue expanded to at least the same as browser instances: ${accountQueue.length}`);
         }
 
-        // 如果队列比“有效并发”小，则再复制到至少 effectiveConcurrency
+        // If queue is smaller than "effective concurrency", copy until at least effectiveConcurrency
         if (accountQueue.length < effectiveConcurrency) {
             const originalQueue2 = [...accountQueue];
             while (accountQueue.length < effectiveConcurrency && originalQueue2.length > 0) {
                 const randomIndex = Math.floor(Math.random() * originalQueue2.length);
                 accountQueue.push(originalQueue2[randomIndex]);
             }
-            console.log(`队列已扩充到至少并发数：${accountQueue.length} 条 (并发=${effectiveConcurrency})`);
+            console.log(`Queue expanded to at least concurrency number: ${accountQueue.length} (Concurrency=${effectiveConcurrency})`);
         }
 
-        // 当前正在执行的 任务
+        // Current executing tasks
         const validationPromises = [];
 
-        // 轮询
+        // Round robin
         let browserIndex = 0;
 
         function getNextBrowserInstance() {
@@ -293,12 +294,12 @@ class YouProvider {
         }
 
         while (accountQueue.length > 0) {
-            // 如果当前正在执行的任务数量 >= 有效并发
+            // If the number of currently executing tasks >= effective concurrency
             if (validationPromises.length >= effectiveConcurrency) {
                 await Promise.race(validationPromises);
             }
 
-            // 从队列头拿出一个账号
+            // Take a username from the queue head
             const currentUsername = accountQueue.shift();
 
             const browserInstance = getNextBrowserInstance();
@@ -323,9 +324,9 @@ class YouProvider {
                     try {
                         await page.waitForNetworkIdle({ timeout: 5000 });
                     } catch (err) {
-                        console.warn(`[${currentUsername}] 等待网络空闲超时`);
+                        console.warn(`[${currentUsername}] wait for network idle timeout`);
                     }
-                    // 检测是否为 team 账号
+                    // Detect if team account
                     session.isTeamAccount = await page.evaluate(() => {
                         let teamElement = document.querySelector('div._15zm0ko1 p._15zm0ko2');
                         if (teamElement && teamElement.textContent.trim() === 'Your Team') {
@@ -336,17 +337,17 @@ class YouProvider {
                         return altTeamElement && altTeamElement.textContent.includes('Team');
                     });
 
-                    // 如果遇到盾了就多等一段时间
+                    // If human verification challenge detected, wait longer
                     const pageContent = await page.content();
                     if (pageContent.includes("https://challenges.cloudflare.com")) {
-                        console.log(`请在30秒内完成人机验证 (${currentUsername})`);
+                        console.log(`Please complete human verification within 30 seconds (${currentUsername})`);
                         await page.evaluate(() => {
-                            alert("请在30秒内完成人机验证");
+                            alert("Please complete human verification within 30 seconds");
                         });
                         await sleep(30000);
                     }
 
-                    // 验证 cookie 有效性
+                    // Validate cookie validity
                     try {
                         const content = await page.evaluate(() => {
                             return fetch("https://you.com/api/user/getYouProState").then(res => res.text());
@@ -356,7 +357,7 @@ class YouProvider {
                         const allowNonPro = process.env.ALLOW_NON_PRO === "true";
 
                         if (session.isTeamAccount) {
-                            console.log(`${currentUsername} 校验成功 -> Team 账号`);
+                            console.log(`${currentUsername} Validation successful -> Team Account`);
                             session.valid = true;
                             session.isTeam = true;
 
@@ -364,13 +365,13 @@ class YouProvider {
                                 session.youpro_subscription = "true";
                             }
 
-                            // 获取 Team 订阅信息
+                            // Get Team subscription info
                             const teamSubscriptionInfo = await this.getTeamSubscriptionInfo(json.org_subscriptions?.[0]);
                             if (teamSubscriptionInfo) {
                                 session.subscriptionInfo = teamSubscriptionInfo;
                             }
                         } else if (Array.isArray(json.subscriptions) && json.subscriptions.length > 0) {
-                            console.log(`${currentUsername} 校验成功 -> Pro 账号`);
+                            console.log(`${currentUsername} Validation successful -> Pro Account`);
                             session.valid = true;
                             session.isPro = true;
 
@@ -378,39 +379,39 @@ class YouProvider {
                                 session.youpro_subscription = "true";
                             }
 
-                            // 获取 Pro 订阅信息
+                            // Get Pro subscription info
                             const subscriptionInfo = await this.getSubscriptionInfo(page);
                             if (subscriptionInfo) {
                                 session.subscriptionInfo = subscriptionInfo;
                             }
                         } else if (allowNonPro) {
-                            console.log(`${currentUsername} 有效 (非Pro)`);
-                            console.warn(`警告: ${currentUsername} 没有Pro或Team订阅，功能受限。`);
+                            console.log(`${currentUsername} Valid (Non-Pro)`);
+                            console.warn(`Warning: ${currentUsername} has no Pro or Team subscription, functionality is limited.`);
                             session.valid = true;
                             session.isPro = false;
                             session.isTeam = false;
                         } else {
-                            console.log(`${currentUsername} 无有效订阅`);
-                            console.warn(`警告: ${currentUsername} 可能没有有效的订阅。请检查You是否有有效的Pro或Team订阅。`);
+                            console.log(`${currentUsername} No valid subscription`);
+                            console.warn(`Warning: ${currentUsername} may not have a valid subscription. Please check if You has a valid Pro or Team subscription.`);
                             session.valid = false;
 
-                            // 标记为失效
+                            // Mark as invalid
                             await markAccountAsInvalid(currentUsername, this.config);
                         }
                     } catch (parseErr) {
-                        console.log(`${currentUsername} 已失效 (fetchYouProState 异常)`);
-                        console.warn(`警告: ${currentUsername} 验证失败。请检查cookie是否有效。`);
+                        console.log(`${currentUsername} Invalid (fetchYouProState exception)`);
+                        console.warn(`Warning: ${currentUsername} validation failed. Please check if cookie is valid.`);
                         console.error(parseErr);
                         session.valid = false;
 
-                        // 标记为失效
+                        // Mark as invalid
                         await markAccountAsInvalid(currentUsername, this.config);
                     }
                 } catch (errorVisit) {
-                    console.error(`验证账户 ${currentUsername} 时出错:`, errorVisit);
+                    console.error(`Error validating account ${currentUsername}:`, errorVisit);
                     session.valid = false;
                 } finally {
-                    // 如果是多账号模式
+                    // If multi-account mode
                     if (!this.isSingleSession) {
                         await clearCookiesNonBlocking(page);
                     }
@@ -423,13 +424,13 @@ class YouProvider {
             validationPromises.push(validationTask);
         }
 
-        // 等待所有任务完成
+        // Wait for all tasks to complete
         await Promise.all(validationPromises);
     }
 
     async getTeamSubscriptionInfo(subscription) {
         if (!subscription) {
-            console.warn('没有有效的Team订阅信息');
+            console.warn('No valid Team subscription info found');
             return null;
         }
 
@@ -439,7 +440,7 @@ class YouProvider {
         const daysRemaining = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
 
         return {
-            expirationDate: endDate.toLocaleDateString('zh-CN', {
+            expirationDate: endDate.toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric'
@@ -463,7 +464,7 @@ class YouProvider {
                 // Windows
                 exec(`powershell.exe -Command "(New-Object -ComObject WScript.Shell).AppActivate('${title}')"`, (error) => {
                     if (error) {
-                        console.error('无法激活窗口:', error);
+                        console.error('Failed to activate window:', error);
                         reject(error);
                     } else {
                         resolve();
@@ -473,15 +474,15 @@ class YouProvider {
                 // macOS
                 exec(`osascript -e 'tell application "System Events" to set frontmost of every process whose displayed name contains "${title}" to true'`, (error) => {
                     if (error) {
-                        console.error('无法激活窗口:', error);
+                        console.error('Failed to activate window:', error);
                         reject(error);
                     } else {
                         resolve();
                     }
                 });
             } else {
-                // Linux 或其他系统
-                console.warn('当前系统不支持自动切换窗口到前台，请手动切换');
+                // Linux or other systems
+                console.warn('Auto window switching not supported on this system, please switch manually');
                 resolve();
             }
         });
@@ -503,27 +504,27 @@ class YouProvider {
                     const today = new Date();
                     let expirationDate;
 
-                    // 计算订阅结束日期
+                    // Calculate subscription end date
                     if (subscription.interval === 'month') {
                         expirationDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, startDate.getDate());
                     } else if (subscription.interval === 'year') {
                         expirationDate = new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate());
                     } else {
-                        console.log(`未知的订阅间隔: ${subscription.interval}`);
+                        console.log(`Unknown subscription interval: ${subscription.interval}`);
                         return null;
                     }
 
-                    // 计算从开始日期到今天间隔数
+                    // Calculate number of intervals passed from start date to today
                     const intervalsPassed = Math.floor((today - startDate) / (subscription.interval === 'month' ? 30 : 365) / (24 * 60 * 60 * 1000));
 
-                    // 计算到期日期
+                    // Calculate expiration date
                     if (subscription.interval === 'month') {
                         expirationDate.setMonth(expirationDate.getMonth() + intervalsPassed);
                     } else {
                         expirationDate.setFullYear(expirationDate.getFullYear() + intervalsPassed);
                     }
 
-                    // 如果计算出的日期仍在过去，再加一个间隔
+                    // If the calculated date is still in the past, add another interval
                     if (expirationDate <= today) {
                         if (subscription.interval === 'month') {
                             expirationDate.setMonth(expirationDate.getMonth() + 1);
@@ -535,7 +536,7 @@ class YouProvider {
                     const daysRemaining = Math.ceil((expirationDate - today) / (1000 * 60 * 60 * 24));
 
                     return {
-                        expirationDate: expirationDate.toLocaleDateString('zh-CN', {
+                        expirationDate: expirationDate.toLocaleDateString('en-US', {
                             year: 'numeric',
                             month: 'long',
                             day: 'numeric'
@@ -545,22 +546,22 @@ class YouProvider {
                         cancelAtPeriodEnd: subscription.cancel_at_period_end
                     };
                 } else {
-                    console.log('订阅信息中缺少 start_date 或 interval 字段');
+                    console.log('Missing start_date or interval field in subscription info');
                     return null;
                 }
             } else {
-                console.log('API 响应中没有有效的订阅信息');
+                console.log('No valid subscription info in API response');
                 return null;
             }
         } catch (error) {
-            console.error('获取订阅信息时出错:', error);
+            console.error('Error getting subscription info:', error);
             return null;
         }
     }
 
     async waitForManualLogin(page) {
         return new Promise((resolve, reject) => {
-            let isResolved = false; // 标记是否已完成
+            let isResolved = false; // Flag if completed
             let timeoutId;
 
             const checkLoginStatus = async () => {
@@ -575,11 +576,11 @@ class YouProvider {
                     });
 
                     if (loginInfo) {
-                        console.log(`检测到自动登录成功: ${loginInfo}`);
+                        console.log(`Auto login detected successful: ${loginInfo}`);
                         const cookies = await page.cookies();
                         const sessionCookie = this.extractSessionCookie(cookies);
 
-                        // 设置隐身模式 cookie
+                        // Set incognito mode cookie
                         if (sessionCookie) {
                             await page.setCookie(...sessionCookie);
                         }
@@ -592,14 +593,14 @@ class YouProvider {
                     }
                 } catch (error) {
                     if (error.message.includes('Execution context was destroyed')) {
-                        // 执行上下文被销毁，页面可能发生导航
+                        // Execution context destroyed, page might have navigated
                         page.once('load', () => {
                             if (!isResolved) {
                                 checkLoginStatus();
                             }
                         });
                     } else {
-                        console.error('检查登录状态时发生错误:', error);
+                        console.error('Error checking login status:', error);
                         if (!isResolved) {
                             isResolved = true;
                             clearTimeout(timeoutId);
@@ -615,7 +616,7 @@ class YouProvider {
                     const cookies = await page.cookies();
                     const sessionCookie = this.extractSessionCookie(cookies);
 
-                    // 设置隐身模式 cookie
+                    // Set incognito mode cookie
                     if (sessionCookie) {
                         await page.setCookie(...sessionCookie);
                     }
@@ -628,7 +629,7 @@ class YouProvider {
 
             page.on('framenavigated', () => {
                 if (!isResolved) {
-                    console.log('检测到页面导航，重新检查登录状态');
+                    console.log('Page navigation detected, re-checking login status');
                     checkLoginStatus();
                 }
             });
@@ -655,12 +656,12 @@ class YouProvider {
                     const jwt = JSON.parse(Buffer.from(ds.split(".")[1], "base64").toString());
                     sessionCookie.email = jwt.email;
                     sessionCookie.isNewVersion = true;
-                    // tenants 的解析
+                    // parse tenants
                     if (jwt.tenants) {
                         sessionCookie.tenants = jwt.tenants;
                     }
                 } catch (error) {
-                    console.error('解析DS令牌时出错:', error);
+                    console.error('Error parsing DS token:', error);
                     return null;
                 }
             } else if (jwtToken) {
@@ -669,21 +670,21 @@ class YouProvider {
                     sessionCookie.email = jwt.user?.email || jwt.email || jwt.user?.name;
                     sessionCookie.isNewVersion = false;
                 } catch (error) {
-                    console.error('JWT令牌解析错误:', error);
+                    console.error('JWT token parsing error:', error);
                     return null;
                 }
             }
         }
 
         if (!sessionCookie || !sessionCookie.some(c => c.name === 'stytch_session' || c.name === 'DS')) {
-            console.error('无法提取有效的会话 cookie');
+            console.error('Unable to extract valid session cookie');
             return null;
         }
 
         return sessionCookie;
     }
 
-    // 生成随机文件名
+    // Generate random file name
     generateRandomFileName(length) {
         const validChars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
         let result = '';
@@ -694,12 +695,12 @@ class YouProvider {
     }
 
     checkAndSwitchMode(session) {
-        // 如果当前模式不可用
+        // If current mode is not available
         if (!session.modeStatus[session.currentMode]) {
             const availableModes = Object.keys(session.modeStatus).filter(mode => session.modeStatus[mode]);
 
             if (availableModes.length === 0) {
-                console.warn("两种模式都达到请求上限。");
+                console.warn("Both modes reached the request limit.");
             } else if (availableModes.length === 1) {
                 session.currentMode = availableModes[0];
                 session.rotationEnabled = false;
@@ -717,15 +718,15 @@ class YouProvider {
         modeSwitched = false
     }) {
         if (this.networkMonitor.isNetworkBlocked()) {
-            throw new Error("网络异常，请稍后再试");
+            throw new Error("Network exception, please try again later");
         }
         const session = this.sessions[username];
         if (!session || !session.valid) {
-            throw new Error(`用户 ${username} 的会话无效`);
+            throw new Error(`Session for user ${username} is invalid`);
         }
         const emitter = new EventEmitter();
         let page = browserInstance.page;
-        // 初始化 session 相关的模式属性
+        // Initialize session-related mode properties
         if (session.currentMode === undefined) {
             session.currentMode = this.isCustomModeEnabled ? 'custom' : 'default';
             session.rotationEnabled = true;
@@ -736,7 +737,7 @@ class YouProvider {
             session.youTotalRequests = 0;
         }
         if (!this.isSingleSession) {
-            // 设置账号Cookie
+            // Set account cookie
             await page.setCookie(...getSessionCookie(
                 session.jwtSession,
                 session.jwtToken,
@@ -750,21 +751,21 @@ class YouProvider {
         await sleep(2000);
         try {
             if (page.isClosed()) {
-                console.warn(`[${username}] 页面关闭，重新创建...`);
+                console.warn(`[${username}] Page closed, re-creating...`);
             }
             await page.goto("https://you.com", { waitUntil: 'domcontentloaded' });
         } catch (err) {
             if (/detached frame/i.test(err.message)) {
-                console.warn(`[${username}] 检测到页面 Frame 分离。`);
+                console.warn(`[${username}] Page Frame detached detected.`);
                 try {
-                    console.warn(`[${username}] 重试"https://you.com"...`);
+                    console.warn(`[${username}] Retrying "https://you.com"...`);
                     if (!page.isClosed()) {
                         await page.goto("https://you.com", { waitUntil: 'domcontentloaded' });
                     } else {
-                        console.error(`[${username}] 页面被彻底关闭。`);
+                        console.error(`[${username}] Page was completely closed.`);
                     }
                 } catch (retryErr) {
-                    console.error(`[${username}] 重试 page.goto 失败:`, retryErr);
+                    console.error(`[${username}] Retrying page.goto failed:`, retryErr);
                     throw retryErr;
                 }
             } else {
@@ -773,29 +774,29 @@ class YouProvider {
         }
         await sleep(1000);
 
-        //打印messages完整结构
+        // Print complete messages structure
         // console.log(messages);
 
-        // 检查
+        // Check
         if (this.isRotationEnabled) {
             this.checkAndSwitchMode(session);
             if (!Object.values(session.modeStatus).some(status => status)) {
                 session.modeStatus.default = true;
                 session.modeStatus.custom = true;
                 session.rotationEnabled = true;
-                console.warn(`账号 ${username} 的两种模式都达到请求上限，重置记录状态。`);
+                console.warn(`Account ${username} has reached the request limit for both modes, resetting recorded status.`);
             }
         }
-        // 处理模式轮换逻辑
+        // Handle mode rotation logic
         if (!modeSwitched && this.isCustomModeEnabled && this.isRotationEnabled && session.rotationEnabled) {
             session.switchCounter++;
             session.requestsInCurrentMode++;
-            console.log(`当前模式: ${session.currentMode}, 本模式下的请求次数: ${session.requestsInCurrentMode}, 距离下次切换还有 ${session.switchThreshold - session.switchCounter} 次请求`);
+            console.log(`Current mode: ${session.currentMode}, Requests in this mode: ${session.requestsInCurrentMode}, ${session.switchThreshold - session.switchCounter} requests until next switch`);
             if (session.switchCounter >= session.switchThreshold) {
                 this.switchMode(session);
             }
         } else {
-            // 检查 messages 中是否包含 -modeid:1 或 -modeid:2
+            // Check if messages contains -modeid:1 or -modeid:2
             let modeId = null;
             for (const msg of messages) {
                 const match = msg.content.match(/-modeid:(\d+)/);
@@ -806,29 +807,29 @@ class YouProvider {
             }
             if (modeId === '1') {
                 session.currentMode = 'default';
-                console.log(`注意: 检测到 -modeid:1，强制切换到默认模式`);
+                console.log(`Note: -modeid:1 detected, forcing switch to default mode`);
             } else if (modeId === '2') {
                 session.currentMode = 'custom';
-                console.log(`注意: 检测到 -modeid:2，强制切换到自定义模式`);
+                console.log(`Note: -modeid:2 detected, forcing switch to custom mode`);
             }
-            console.log(`当前模式: ${session.currentMode}`);
+            console.log(`Current mode: ${session.currentMode}`);
         }
-        // 根据轮换状态决定是否使用自定义模式
+        // Decide whether to use custom mode based on rotation status
         const effectiveUseCustomMode = this.isRotationEnabled ? (session.currentMode === "custom") : useCustomMode;
 
-        // 检查页面是否已经加载完成
+        // Check if page has finished loading
         const isLoaded = await page.evaluate(() => {
             return document.readyState === 'complete' || document.readyState === 'interactive';
         });
 
         if (!isLoaded) {
-            console.log('页面尚未加载完成，等待加载...');
+            console.log('Page not finished loading, waiting...');
             await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {
-                console.log('页面加载超时，继续执行');
+                console.log('Page load timeout, continuing...');
             });
         }
 
-        // 计算用户消息长度
+        // Calculate user message length
         let userMessage = [{ question: "", answer: "" }];
         let userQuery = "";
         let lastUpdate = true;
@@ -872,23 +873,23 @@ class YouProvider {
             }));
         }
 
-        // 检查该session是否已经创建对应模型的对应user chat mode
+        // Check if this session has created the corresponding user chat mode for the model
         let userChatModeId = "custom";
         if (effectiveUseCustomMode) {
             if (!this.config.user_chat_mode_id) {
                 this.config.user_chat_mode_id = {};
             }
-            // 检查与当前用户名匹配记录
+            // Check record matching current username
             if (!this.config.user_chat_mode_id[username]) {
-                // 为当前用户创建新记录
+                // Create new record for current user
                 this.config.user_chat_mode_id[username] = {};
                 fs.writeFileSync("./config.mjs", "export const config = " + JSON.stringify(this.config, null, 4));
                 console.log(`Created new record for user: ${username}`);
             }
 
-            // 检查是否存在对应模型记录
+            // Check if corresponding model record exists
             if (!this.config.user_chat_mode_id[username][proxyModel]) {
-                // 创建新的 user chat mode
+                // Create new user chat mode
                 let userChatMode = await page.evaluate(
                     async (proxyModel, proxyModelName) => {
                         return fetch("https://you.com/api/custom_assistants/assistants", {
@@ -896,14 +897,14 @@ class YouProvider {
                             body: JSON.stringify({
                                 aiModel: proxyModel,
                                 name: proxyModelName,
-                                instructions: "Your custom instructions here", // 可自定义的指令
-                                instructionsSummary: "", // 添加备注
-                                hasLiveWebAccess: false, // 是否启用网络访问
-                                hasPersonalization: false, // 是否启用个性化功能
-                                hideInstructions: false, // 是否在界面上隐藏指令
-                                includeFollowUps: false, // 是否包含后续问题或建议
-                                visibility: "private", // 聊天模式的可见性，private（私有）或 public（公开）
-                                advancedReasoningMode: "off", // 可设置为 "auto" 或 "off"，用于是否开启工作流
+                                instructions: "Your custom instructions here", // Custom instructions
+                                instructionsSummary: "", // Add summary
+                                hasLiveWebAccess: false, // Whether to enable web access
+                                hasPersonalization: false, // Whether to enable personalization
+                                hideInstructions: false, // Whether to hide instructions on the interface
+                                includeFollowUps: false, // Whether to include follow-up questions
+                                visibility: "private", // Visibility, private or public
+                                advancedReasoningMode: "off", // "auto" or "off", whether to enable workflow
                             }),
                             headers: {
                                 "Content-Type": "application/json",
@@ -915,7 +916,7 @@ class YouProvider {
                 );
                 if (userChatMode.chat_mode_id) {
                     this.config.user_chat_mode_id[username][proxyModel] = userChatMode.chat_mode_id;
-                    // 写回 config
+                    // Write back to config
                     fs.writeFileSync("./config.mjs", "export const config = " + JSON.stringify(this.config, null, 4));
                     console.log(`Created new chat mode for user ${username} and model ${proxyModel}`);
                 } else {
@@ -928,37 +929,37 @@ class YouProvider {
             console.log("Custom mode is disabled, using default mode.");
         }
 
-        // 生成随机长度（6-16）的文件名
+        // Generate random length (6-16) file name
         const randomFileName = this.generateRandomFileName(Math.floor(Math.random() * 11) + 6);
         console.log(`Generated random file name: ${randomFileName}`);
 
-        // 试算用户消息长度
+        // Try to calculate user message length
         if (encodeURIComponent(JSON.stringify(userMessage)).length + encodeURIComponent(userQuery).length > 8000) {
             console.log("Using file upload mode");
 
-            // 应用格式化逻辑
+            // Apply formatting logic
             const formattedMessages = formatMessages(messages, proxyModel, randomFileName);
 
-            // 将格式化后的消息转换为纯文本
+            // Convert formatted messages to plain text
             let previousMessages = formattedMessages
                 .map((msg) => {
                     if (!msg.role) {
-                        return msg.content;  // role为空只返回content
+                        return msg.content;  // If role is empty, return only content
                     } else {
                         return `${msg.role}: ${msg.content}`;
                     }
                 })
                 .join("\n\n");
 
-            // 插入乱码（如果启用）
+            // Insert garbled text (if enabled)
             previousMessages = insertGarbledText(previousMessages);
 
             userQuery = '';
 
-            // 检测并替换 <userQuery> 标签内容
+            // Detect and replace <userQuery> tag content
             ({ previousMessages, userQuery } = extractAndReplaceUserQuery(previousMessages, userQuery));
 
-            // 创建本地副本（用于调试）
+            // Create local copy (for debugging)
             const localCopyPath = path.join(__dirname, 'local_copy_formatted_messages.txt');
             // fs.writeFileSync(localCopyPath, messages.map((msg) => `${msg.role}: ${msg.content}`).join("\n\n"));
             fs.writeFileSync(localCopyPath, previousMessages);
@@ -976,9 +977,9 @@ class YouProvider {
             const result = randomSelect(userQuery);
             userQuery = result.replace(/\${randomFileName}/g, randomFileName);
 
-            // 图片上传逻辑
-            const maxImageSizeMB = 5; // 最大允许图片大小限制 (MB)
-            // 从 imageStorage 中获取最后一个图片
+            // Image upload logic
+            const maxImageSizeMB = 5; // Max allowed image size limit (MB)
+            // Get last image from imageStorage
             var lastImage = imageStorage.getLastImage();
             var uploadedImage = null;
             if (lastImage) {
@@ -991,7 +992,7 @@ class YouProvider {
                     const fileExtension = lastImage.mediaType.split('/')[1];
                     const fileName = `${lastImage.imageId}.${fileExtension}`;
 
-                    // 获取 nonce
+                    // Get nonce
                     const imageNonce = await page.evaluate(() => {
                         return fetch("https://you.com/api/get_nonce").then((res) => res.text());
                     });
@@ -1019,7 +1020,7 @@ class YouProvider {
                                 });
                                 const result = await response.json();
                                 if (response.ok && result.filename) {
-                                    return result; // 包括 filename 和 user_filename
+                                    return result; // Includes filename and user_filename
                                 } else {
                                     console.error(`Failed to upload image ${fileName}:`, result.error || "Unknown error during image upload");
                                 }
@@ -1041,12 +1042,12 @@ class YouProvider {
                         console.log(`Image uploaded successfully: ${fileName}`);
 
                     }
-                    // 清空 imageStorage
+                    // Clear imageStorage
                     imageStorage.clearAllImages();
                 }
             }
 
-            // 文件上传
+            // File upload
             const fileNonce = await page.evaluate(() => {
                 return fetch("https://you.com/api/get_nonce").then((res) => res.text());
             });
@@ -1055,17 +1056,17 @@ class YouProvider {
             var messageBuffer;
             if (this.uploadFileFormat === 'docx') {
                 try {
-                    // 尝试将 previousMessages 转换
+                    // Try to convert previousMessages
                     messageBuffer = await createDocx(previousMessages);
                 } catch (error) {
                     this.uploadFileFormat = 'txt';
-                    // 为 txt 内容添加 BOM
+                    // Add BOM to txt content
                     const bomBuffer = Buffer.from([0xEF, 0xBB, 0xBF]);
                     const contentBuffer = Buffer.from(previousMessages, 'utf8');
                     messageBuffer = Buffer.concat([bomBuffer, contentBuffer]);
                 }
             } else {
-                // 在开头拼接 BOM
+                // Prepend BOM at the beginning
                 const bomBuffer = Buffer.from([0xEF, 0xBB, 0xBF]);
                 const contentBuffer = Buffer.from(previousMessages, 'utf8');
                 messageBuffer = Buffer.concat([bomBuffer, contentBuffer]);
@@ -1109,19 +1110,19 @@ class YouProvider {
 
         let msgid = uuidV4();
         let traceId = uuidV4();
-        let finalResponse = ""; // 用于存储最终响应
-        let responseStarted = false; // 是否已经开始接收响应
-        let responseTimeout = null; // 响应超时计时器
-        let customEndMarkerTimer = null; // 自定义终止符计时器
-        let customEndMarkerEnabled = false; // 是否启用自定义终止符
-        let accumulatedResponse = ''; // 累积响应
-        let responseAfter20Seconds = ''; // 20秒后的响应
-        let startTime = null; // 开始时间
-        const customEndMarker = (process.env.CUSTOM_END_MARKER || '').replace(/^"|"$/g, '').trim(); // 自定义终止符
-        let isEnding = false; // 是否正在结束
-        const requestTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }); // 请求时间
+        let finalResponse = ""; // Used to store final response
+        let responseStarted = false; // Whether response has started
+        let responseTimeout = null; // Response timeout timer
+        let customEndMarkerTimer = null; // Custom end marker timer
+        let customEndMarkerEnabled = false; // Whether custom end marker is enabled
+        let accumulatedResponse = ''; // Accumulated response
+        let responseAfter20Seconds = ''; // Response after 20 seconds
+        let startTime = null; // Start time
+        const customEndMarker = (process.env.CUSTOM_END_MARKER || '').replace(/^"|"$/g, '').trim(); // Custom end marker
+        let isEnding = false; // Whether it is ending
+        const requestTime = new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }); // Request time
 
-        let unusualQueryVolumeTriggered = false; // 是否触发了异常请求量提示
+        let unusualQueryVolumeTriggered = false; // Whether unusual query volume prompt was triggered
 
         function checkEndMarker(response, marker) {
             if (!marker) return false;
@@ -1131,7 +1132,7 @@ class YouProvider {
         }
 
         // expose function to receive youChatToken
-        // 清理逻辑
+        // Cleanup logic
         const cleanup = async (skipClearCookies = false) => {
             clearTimeout(responseTimeout);
             clearTimeout(customEndMarkerTimer);
@@ -1148,7 +1149,7 @@ class YouProvider {
             if (!this.isSingleSession && !skipClearCookies) {
                 await clearCookiesNonBlocking(page);
             }
-            // 检查请求次数是否达到上限
+            // Check if request count has reached the limit
             if (this.enableRequestLimit && session.youTotalRequests >= this.requestLimit) {
                 session.modeStatus.default = false;
                 session.modeStatus.custom = false;
@@ -1156,12 +1157,12 @@ class YouProvider {
             }
         };
 
-        // 缓存
+        // Cache
         let buffer = '';
-        let heartbeatInterval = null; // 心跳计时器
-        let errorTimer = null; // 错误计时器
-        let errorCount = 0; // 错误计数器
-        const ERROR_TIMEOUT = (proxyModel === "openai_o1" || proxyModel === "openai_o1_preview") ? 60000 : 20000; // 错误超时时间
+        let heartbeatInterval = null; // Heartbeat timer
+        let errorTimer = null; // Error timer
+        let errorCount = 0; // Error counter
+        const ERROR_TIMEOUT = (proxyModel === "openai_o1" || proxyModel === "openai_o1_preview") ? 60000 : 20000; // Error timeout duration
         const self = this;
 
         // proxy response
@@ -1205,8 +1206,8 @@ class YouProvider {
         req_param.append("q", userQuery);
         req_param.append("chat", JSON.stringify(userMessage));
         const url = "https://you.com/api/streamingSearch?" + req_param.toString();
-        const enableDelayLogic = process.env.ENABLE_DELAY_LOGIC === 'true'; // 是否启用延迟逻辑
-        // 输出 userQuery
+        const enableDelayLogic = process.env.ENABLE_DELAY_LOGIC === 'true'; // Whether to enable delay logic
+        // Output userQuery
         // console.log(`User Query: ${userQuery}`);
         if (enableDelayLogic) {
             await page.goto(`https://you.com/search?q=&fromSearchBar=true&tbm=youchat&chatMode=${userChatModeId}&cid=c0_${traceId}`, { waitUntil: 'domcontentloaded' });
@@ -1225,7 +1226,7 @@ class YouProvider {
                                 signal: controller.signal
                             });
                             clearTimeout(timeoutId);
-                            // 读取响应的前几个字节，确保连接已经建立
+                            // Read the first few bytes of response to ensure connection is established
                             const reader = res.body.getReader();
                             const { done } = await reader.read();
                             if (!done) {
@@ -1255,54 +1256,54 @@ class YouProvider {
             }
         }
 
-        // 延迟发送请求并验证连接的函数
+        // Function to verify connection and retry delayed requests
         async function delayedRequestWithRetry(maxRetries = 2, totalTimeout = 120000) {
             const startTime = Date.now();
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 if (Date.now() - startTime > totalTimeout) {
-                    console.error("总体超时，连接失败");
+                    console.error("Overall timeout, connection failed");
                     emitter.emit("error", new Error("Total timeout reached"));
                     return false;
                 }
 
                 if (enableDelayLogic) {
-                    await new Promise(resolve => setTimeout(resolve, 5000)); // 5秒延迟
-                    console.log(`尝试发送请求 (尝试 ${attempt}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+                    console.log(`Trying to send request (Attempt ${attempt}/${maxRetries})`);
 
                     const { connected, cloudflareDetected, error } = await checkConnectionAndCloudflare(page);
 
                     if (connected) {
-                        console.log("连接成功，准备唤醒浏览器");
+                        console.log("Connection successful, preparing to wake up browser");
                         try {
-                            // 唤醒浏览器
+                            // Wake up browser
                             await page.evaluate(() => {
                                 window.scrollTo(0, 100);
                                 window.scrollTo(0, 0);
                                 document.body?.click();
                             });
                             await new Promise(resolve => setTimeout(resolve, 1000));
-                            console.log("开始发送请求");
+                            console.log("Start sending request");
                             emitter.emit("start", traceId);
                             return true;
                         } catch (wakeupError) {
-                            console.error("浏览器唤醒失败:", wakeupError);
+                            console.error("Browser wakeup failed:", wakeupError);
                             emitter.emit("start", traceId);
                             return true;
                         }
                     } else if (cloudflareDetected) {
-                        console.error("检测到 Cloudflare 拦截");
+                        console.error("Cloudflare blocking detected");
                         emitter.emit("error", new Error("Cloudflare challenge detected"));
                         return false;
                     } else {
-                        console.log(`连接失败，准备重试 (${attempt}/${maxRetries}). 错误: ${error || 'Unknown'}`);
+                        console.log(`Connection failed, preparing to retry (${attempt}/${maxRetries}). Error: ${error || 'Unknown'}`);
                     }
                 } else {
-                    console.log("开始发送请求");
+                    console.log("Start sending request");
                     emitter.emit("start", traceId);
                     return true;
                 }
             }
-            console.error("达到最大重试次数，连接失败");
+            console.error("Maximum retries reached, connection failed");
             emitter.emit("error", new Error("Failed to establish connection after maximum retries"));
             return false;
         }
@@ -1352,7 +1353,7 @@ class YouProvider {
                     }
 
                     connect();
-                    // 注册退出函数
+                    // Register exit function
                     window["exit" + traceId] = () => {
                         isEnding = true;
                         evtSource.close();
@@ -1369,15 +1370,15 @@ class YouProvider {
             );
         }
 
-        const responseTimeoutTimer = (proxyModel === "openai_o1" || proxyModel === "openai_o1_preview" || proxyModel === "claude_3_7_sonnet_thinking") ? 140000 : 60000; // 响应超时时间
+        const responseTimeoutTimer = (proxyModel === "openai_o1" || proxyModel === "openai_o1_preview" || proxyModel === "claude_3_7_sonnet_thinking") ? 140000 : 60000; // Response timeout duration
 
-        // 重新发送请求
+        // Resend request
         async function resendPreviousRequest() {
             try {
-                // 清理之前的事件
+                // Cleanup previous events
                 await cleanup(true);
 
-                // 重置状态
+                // Reset state
                 isEnding = false;
                 responseStarted = false;
                 startTime = null;
@@ -1389,8 +1390,8 @@ class YouProvider {
 
                 responseTimeout = setTimeout(async () => {
                     if (!responseStarted) {
-                        console.log(`${responseTimeoutTimer / 1000}秒内没有收到响应，终止请求`);
-                        emitter.emit("completion", traceId, ` (${responseTimeoutTimer / 1000}秒内没有收到响应，终止请求)`);
+                        console.log(`No response received within ${responseTimeoutTimer / 1000} seconds, terminating request`);
+                        emitter.emit("completion", traceId, ` (No response received within ${responseTimeoutTimer / 1000} seconds, terminating request)`);
                         emitter.emit("end", traceId);
                         self.logger.logRequest({
                             email: username,
@@ -1416,7 +1417,7 @@ class YouProvider {
                 await setupEventSource(page, url, traceId, customEndMarker);
                 return true;
             } catch (error) {
-                console.error("重新发送请求时发生错误:", error);
+                console.error("Error occurred when resending request:", error);
                 return false;
             }
         }
@@ -1455,41 +1456,41 @@ class YouProvider {
 
                             startTime = Date.now();
                             clearTimeout(responseTimeout);
-                            // 自定义终止符延迟触发
+                            // Custom end marker delay trigger
                             customEndMarkerTimer = setTimeout(() => {
                                 customEndMarkerEnabled = true;
                             }, 20000);
 
-                            // 停止
+                            // Stop
                             if (heartbeatInterval) {
                                 clearInterval(heartbeatInterval);
                                 heartbeatInterval = null;
                             }
                         }
 
-                        // 重置错误计时器
+                        // Reset error timer
                         if (errorTimer) {
                             clearTimeout(errorTimer);
                             errorTimer = null;
                         }
 
-                        // 检测 'unusual query volume'
+                        // Detect 'unusual query volume'
                         if (processedContent.includes('unusual query volume')) {
-                            const warningMessage = "您在 you.com 账号的使用已达上限，当前(default/agent)模式已进入冷却期(CD)。请切换模式(default/agent[custom])或耐心等待冷却结束后再继续使用。";
+                            const warningMessage = "Your use of the you.com account has reached its limit, and the current (default/agent) mode has entered a cooling-off period (CD). Please switch modes (default/agent[custom]) or wait patiently for the cooling-off period to end before continuing to use it.";
                             emitter.emit("completion", traceId, warningMessage);
-                            unusualQueryVolumeTriggered = true; // 更新标志位
+                            unusualQueryVolumeTriggered = true; // Update flag bits
 
                             if (self.isRotationEnabled) {
                                 session.modeStatus[session.currentMode] = false;
                                 self.checkAndSwitchMode();
                                 if (Object.values(session.modeStatus).some(status => status)) {
-                                    console.log(`模式达到请求上限，已切换模式 ${session.currentMode}，请重试请求。`);
+                                    console.log(`Mode reached request limit, switched to mode ${session.currentMode}, please retry request.`);
                                 }
                             } else {
-                                console.log("检测到请求量异常提示，请求终止。");
+                                console.log("Unusual request volume prompt detected, request terminated.");
                             }
                             isEnding = true;
-                            // 终止
+                            // Terminate
                             setTimeout(async () => {
                                 await cleanup();
                                 emitter.emit("end", traceId);
@@ -1518,10 +1519,10 @@ class YouProvider {
                             finalResponse += processedContent;
                         }
 
-                        // 检查自定义结束标记
+                        // Check custom end marker
                         if (customEndMarkerEnabled && customEndMarker && checkEndMarker(responseAfter20Seconds, customEndMarker)) {
                             isEnding = true;
-                            console.log("检测到自定义终止，关闭请求");
+                            console.log("Custom termination detected, closing request");
                             setTimeout(async () => {
                                 await cleanup();
                                 emitter.emit(stream ? "end" : "completion", traceId, stream ? undefined : finalResponse);
@@ -1542,9 +1543,9 @@ class YouProvider {
                         break;
                     case "done":
                         if (isEnding) return;
-                        console.log("请求结束");
+                        console.log("Request ended");
                         isEnding = true;
-                        await cleanup(); // 清理
+                        await cleanup(); // Cleanup
                         emitter.emit(stream ? "end" : "completion", traceId, stream ? undefined : finalResponse);
                         self.logger.logRequest({
                             email: username,
@@ -1556,12 +1557,12 @@ class YouProvider {
                         });
                         break;
                     case "error": {
-                        if (isEnding) return; // 已结束则忽略
+                        if (isEnding) return; // If already ended, ignore
 
-                        console.error("请求发生错误", data);
+                        console.error("Error occurred during request", data);
                         errorCount++;
                         if (errorCount >= 3) {
-                            const errorMessage = "连接中断，未收到服务器响应";
+                            const errorMessage = "Connection interrupted, no server response received";
                             if (errorTimer) {
                                 clearTimeout(errorTimer);
                                 errorTimer = null;
@@ -1572,7 +1573,7 @@ class YouProvider {
                             emitter.emit("completion", traceId, errorMessage);
                             emitter.emit("end", traceId);
 
-                            // 记录日志
+                            // Log record
                             self.logger.logRequest({
                                 email: username,
                                 time: requestTime,
@@ -1586,8 +1587,8 @@ class YouProvider {
                                 clearTimeout(errorTimer);
                             }
                             errorTimer = setTimeout(async () => {
-                                console.log("连接超时，终止请求");
-                                const errorMessage = "连接中断，未收到服务器响应";
+                                console.log("Connection timeout, terminating request");
+                                const errorMessage = "Connection interrupted, no server response received";
 
                                 emitter.emit("completion", traceId, errorMessage);
                                 finalResponse += ` (${errorMessage})`;
@@ -1613,11 +1614,11 @@ class YouProvider {
 
             responseTimeout = setTimeout(async () => {
                 if (!responseStarted && !clientState.isClosed()) {
-                    console.log(`${responseTimeoutTimer / 1000}秒内没有收到响应，尝试重新发送请求`);
+                    console.log(`No response received within ${responseTimeoutTimer / 1000} seconds, trying to resend request`);
                     const retrySuccess = await resendPreviousRequest();
                     if (!retrySuccess) {
-                        console.log("重试请求时发生错误，终止请求");
-                        emitter.emit("completion", traceId, new Error("重试请求时发生错误"));
+                        console.log("Error occurred when retrying request, terminating request");
+                        emitter.emit("completion", traceId, new Error("Error occurred when retrying request"));
                         emitter.emit("end", traceId);
                         self.logger.logRequest({
                             email: username,
@@ -1629,7 +1630,7 @@ class YouProvider {
                         });
                     }
                 } else if (clientState.isClosed()) {
-                    console.log("客户端已关闭连接，停止重试");
+                    console.log("Client closed connection, stopping retry");
                     await cleanup();
                     emitter.emit("end", traceId);
                     self.logger.logRequest({
@@ -1654,16 +1655,16 @@ class YouProvider {
                 }, 5000);
             }
 
-            // 初始执行 setupEventSource
+            // Perform setupEventSource initially
             await setupEventSource(page, url, traceId, customEndMarker);
-            session.youTotalRequests = (session.youTotalRequests || 0) + 1; // 增加请求次数
-            // 更新本地配置 cookie
+            session.youTotalRequests = (session.youTotalRequests || 0) + 1; // Increment request count
+            // Update local config cookie
             updateLocalConfigCookieByEmailNonBlocking(page);
 
         } catch (error) {
-            console.error("评估过程中出错:", error);
+            console.error("Error during evaluation:", error);
             if (error.message.includes("Browser Disconnected")) {
-                console.log("浏览器断开连接，等待网络恢复...");
+                console.log("Browser disconnected, waiting for network recovery...");
             } else {
                 emitter.emit("error", error);
             }
@@ -1684,22 +1685,22 @@ class YouProvider {
 export default YouProvider;
 
 function unescapeContent(content) {
-    // 将 \" 替换为 "
+    // Replace \" with "
     // content = content.replace(/\\"/g, '"');
 
     // content = content.replace(/\\n/g, '');
 
-    // 将 \r 替换为空字符
+    // Replace \r with empty character
     // content = content.replace(/\\r/g, '');
 
-    // 将 「 和 」 替换为 "
+    // Replace 「 and 」 with "
     // content = content.replace(/[「」]/g, '"');
 
     return content;
 }
 
 function extractAndReplaceUserQuery(previousMessages, userQuery) {
-    // 匹配 <userQuery> 标签内的内容，作为第一句话
+    // Match content inside <userQuery> tags as the first sentence
     const userQueryPattern = /<userQuery>([\s\S]*?)<\/userQuery>/;
 
     const match = previousMessages.match(userQueryPattern);
@@ -1724,10 +1725,10 @@ async function clearCookiesNonBlocking(page) {
             for (const cookie of cookies) {
                 await page.deleteCookie(cookie);
             }
-            console.log('已自动清理 cookie');
+            console.log('Automatically cleared cookies');
             await sleep(4500);
         } catch (e) {
-            console.error('清理 Cookie 时出错:', e);
+            console.error('Error clearing Cookies:', e);
         }
     }
 }
@@ -1741,18 +1742,18 @@ function randomSelect(input) {
 }
 
 /**
- * 账号标记失效并保存
- * @param {string} username - 账号邮箱
- * @param {Object} config - 配置对象
+ * Mark account as invalid and save
+ * @param {string} username - Account email
+ * @param {Object} config - Configuration object
  */
 async function markAccountAsInvalid(username, config) {
     if (!config.invalid_accounts) {
         config.invalid_accounts = {};
     }
-    config.invalid_accounts[username] = "已失效";
+    config.invalid_accounts[username] = "Invalidated";
     try {
         fs.writeFileSync("./config.mjs", `export const config = ${JSON.stringify(config, null, 4)}`);
     } catch (error) {
-        console.error(`保存失效账号信息失败:`, error);
+        console.error(`Failed to save invalid account info:`, error);
     }
 }
